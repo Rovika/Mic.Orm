@@ -80,6 +80,17 @@ public static class MemberQueryHelper {
       BuildListAnyQuery(row, key, QueryMaker.Parameter("rows", typeof(object[])), key));
   }
 
+  /// <summary>Builds the query for some members of the rows of an entity that are any of several records.</summary>
+  /// <param name="entity">The entity.</param>
+  /// <param name="members">The members to read.</param>
+  /// <returns>A query taking one argument, the records, and returning for each row its primary key members and the
+  /// given members, each under its own name.</returns>
+  public static QueryNode BuildMembersByKeysQuery(ILinqEntity entity, IReadOnlyList<ILinqEntityMember> members) {
+    ArgumentNullException.ThrowIfNull(members);
+    return BuildByKeysQuery(entity).Select(row =>
+      [.. entity.PrimaryKeyMembers.Select(row.Member), .. members.Select(row.Member)]);
+  }
+
   /// <summary>Builds the query for the row with a value of a key, with the terms of a composite key joined by
   /// <c>AND</c>.</summary>
   /// <param name="entity">The entity.</param>

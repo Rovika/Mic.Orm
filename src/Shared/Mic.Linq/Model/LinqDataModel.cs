@@ -85,6 +85,11 @@ public interface ILinqEntityMember {
   /// nothing recorded behind it.</summary>
   /// <remarks>A list with nothing recorded behind it cannot be navigated.</remarks>
   ILinqMemberListInfo? ListInfo { get; }
+
+  /// <summary>Gets a value that indicates whether the member's column is left out of a select of the entity's rows.
+  /// </summary>
+  /// <remarks>A query that names the member reads its column as any other.</remarks>
+  bool IsOnDemand { get; }
 }
 
 /// <summary>Defines what a reference member is made of: the target entity and the key pairing that joins to it.

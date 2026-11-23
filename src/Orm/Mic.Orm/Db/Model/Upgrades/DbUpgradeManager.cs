@@ -1,9 +1,8 @@
 using System.Text.RegularExpressions;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.DbInfo;
+using Mic.Orm.Logging;
 using Mic.Orm.Runtime;
 
 namespace Mic.Orm.Db.Model.Upgrades;
@@ -251,7 +250,7 @@ public class DbUpgradeManager {
     var filtered = new DbModelDiffInfo();
     foreach (var change in changes.Items) {
       if (change.DiffKind is DbDiffKind.Drop or DbDiffKind.Modify) {
-        var path = DbModelDefBuilder.GetPath(change.Target ?? change.Source);
+        var path = DbModelHelper.GetPath(change.Target ?? change.Source);
         if (ignored.Any(pattern => pattern.IsMatch(path)))
           continue;
       }

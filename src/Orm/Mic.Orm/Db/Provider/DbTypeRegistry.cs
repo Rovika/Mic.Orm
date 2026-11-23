@@ -123,8 +123,10 @@ public class DbTypeRegistry {
     foreach (var alias in def.Aliases)
       _byName[alias] = def;
 
-    // A legacy type is resolvable by name but never chosen by mapping.
-    if (!def.IsLegacy && !def.IsUnlimited && !_preferredByClrType.ContainsKey(clrType))
+    // A legacy type is resolvable by name but never chosen by mapping; nor is a vector type, which a member takes
+    // by its mark and not by being an array of floats.
+    if (!def.IsLegacy && !def.IsUnlimited && specialType != DbSpecialType.Vector
+        && !_preferredByClrType.ContainsKey(clrType))
       _preferredByClrType[clrType] = def;
     if (specialType != DbSpecialType.None)
       _bySpecialType[specialType] = def;
@@ -227,12 +229,26 @@ public class DbTypeRegistry {
       return Apply(jsonDef);
     }
 
+    // A vector member takes the server's vector type, with its dimensions as the size.
+    if (member.IsVector) {
+      var vectorDef = FindSpecial(DbSpecialType.Vector);
+      if (vectorDef == null) {
+        error = "no vector type is registered to hold a [Vector] member: this server's provider has none, or has "
+          + "one for a later version of the server than the provider was created for.";
+        return null;
+      }
+      return Apply(vectorDef, member.Size);
+    }
+
     var clrType = GetUnderlyingType(member);
     var unlimited = member.MemberFlags.HasFlag(MemberFlags.Unlimited);
 
     var def = FindPreferred(clrType, unlimited, member.Size);
     if (def == null) {
-      error = $"no database type is registered for '{clrType.Name}'.";
+      error = member.ArrayItemType != null
+        ? $"no array type is registered for '{clrType.Name}': an array of scalars is a column on a server that has "
+          + "array types, PostgreSQL; elsewhere the member wants [Json]."
+        : $"no database type is registered for '{clrType.Name}'.";
       return null;
     }
     return Apply(def, member.Size, member.Precision, member.Scale);
@@ -325,6 +341,9 @@ public class DbTypeRegistry {
 
   // An enum is stored as its underlying integer.
   private static Type GetUnderlyingType(EntityMemberInfo member) {
+    // An array member is looked up as an array of its items, whether it is declared an array or a List.
+    if (member.ArrayItemType != null)
+      return member.ArrayItemType.MakeArrayType();
     var type = member.DataType;
     return type.IsEnum ? Enum.GetUnderlyingType(type) : type;
   }

@@ -216,6 +216,9 @@ public class DataRequestExecutor {
     // A lock lives on the server, so a locked query skips the entity cache whether or not the caller said so.
     var skipsEntityCache = (query.Options
       & (QueryOptions.SkipEntityCache | QueryOptions.LockForUpdate | QueryOptions.SkipLocked)) != 0;
+    // What a lock holds is the row as the server has it, so a tracked record is refreshed from it.
+    if ((query.Options & (QueryOptions.LockForUpdate | QueryOptions.SkipLocked)) != 0)
+      request.Flags |= DataRequestFlags.RefreshTracked;
     if (!skipsEntityCache && entry.CacheQuery is { } cacheQuery) {
       request.CacheQuery = cacheQuery;
       request.CachedRows = await LoadCachedRowsAsync(request.Session, cacheQuery.Entities);
@@ -300,7 +303,7 @@ public class DataRequestExecutor {
       if (ownsTransaction || (request.Kind == DataRequestKind.Mutation && connection.Flags.HasFlag(DbConnectionFlags.CommitOnSave))) {
         await connection.CommitAsync(runMode);
       }
-    } catch (DbException ex) {
+    } catch (Exception thrown) when (FindDbException(thrown) is { } ex) {
       if (ownsTransaction || connection.Flags.HasFlag(DbConnectionFlags.CommitOnSave))
         await connection.AbortAsync(runMode);
       await RollBackBatchAsync(connection, request, index, cancellation);
@@ -460,6 +463,11 @@ public class DataRequestExecutor {
 
   /// <summary>Creates the exception for a failed command: which command, its text and values, and the row the
   /// server refused where one was found.</summary>
+  /// <summary>Finds the driver's failure in an exception: the exception itself, or the one inside an
+  /// <see cref="AggregateException"/>, which IBM's driver throws when a row fails to be read.</summary>
+  private static DbException? FindDbException(Exception thrown) =>
+    thrown as DbException ?? (thrown as AggregateException)?.GetBaseException() as DbException;
+
   protected virtual DataAccessException CreateDataAccessException(DbException ex, DataRequest request, int index,
       string? culprit = null) {
     var command = index < request.DataCommands.Count ? request.DataCommands[index] : null;

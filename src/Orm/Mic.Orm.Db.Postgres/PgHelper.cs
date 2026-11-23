@@ -1,5 +1,4 @@
 using System.Data.Common;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 
 namespace Mic.Orm.Db.Postgres;

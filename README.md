@@ -8,11 +8,12 @@ rewrite that keeps VITA's main design choices and stays backward compatible in m
 design: VITA entity definitions work in MIC ORM without changes.
 [Migrating from VITA](https://rovika.github.io/Mic.Orm/guide/migrating-from-vita.html) has the steps.
 
-Supported database servers: PostgreSQL, SQL Server, MySQL, Oracle and SQLite.
+Supported database servers: PostgreSQL, SQL Server, MySQL, Oracle, SQLite and Db2 for Linux and Windows.
 
 See more in the documentation: <https://rovika.github.io/Mic.Orm/>
 
-> **Preview.** The current version is `0.9.0-preview.1`. The API may change before 1.0.
+> **Preview.** The current version is `0.10.0-preview.1`. The API may change before 1.0. The packages need
+> .NET 10 or later. [CHANGELOG.md](CHANGELOG.md) lists what each version brings.
 
 ## Application code example
 
@@ -95,7 +96,7 @@ Create an application skeleton: the entity model, a console host and a test proj
 dotnet new mic-app -n Shop --provider Postgres
 ```
 
-`--provider` is `Postgres`, `MySql`, `MsSql`, `Oracle` or `SQLite`. The solution is made in a new folder
+`--provider` is `Postgres`, `MySql`, `MsSql`, `Oracle`, `SQLite` or `Db2`. The solution is made in a new folder
 `Shop`. The host reads its connection string from the environment variable `SHOP_CONN`. Set it and run:
 
 ```bash
@@ -116,7 +117,7 @@ dotnet add package Mic.Orm.Db.Postgres --prerelease
 | Package | Holds |
 |---|---|
 | `Mic.Orm` | The ORM. A project that holds only the entity model references this one alone. |
-| `Mic.Orm.Db.Postgres`, `.SqlServer`, `.MySql`, `.Oracle`, `.Sqlite` | The provider for one server. |
+| `Mic.Orm.Db.Postgres`, `.SqlServer`, `.MySql`, `.Oracle`, `.Sqlite`, `.Db2` | The provider for one server. The Db2 provider wants IBM's driver package beside it; see the guide's page on Db2. |
 | `Mic.DbTool` | The `mic-db` tool: the upgrade script for a production database, and entities from an existing one. |
 | `Mic.Templates` | The `mic-app` project template. |
 

@@ -119,10 +119,28 @@ var lines = await order.Lines;         // loads the list if it is not loaded
 Reading `order.Customer.Name` without the await loads the customer too, on the calling thread. See
 [Reading related entities](linq-queries.md#reading-related-entities-lazy-loading).
 
+## How do I keep a large column out of a read?
+
+Mark the member `[OnDemand]`. A read of the entity leaves the column out; the member loads when it is first
+read, or with the query that includes it.
+
+```csharp
+[OnDemand, Unlimited] string Body { get; set; }
+
+var articles = await session.EntitySet<IArticle>().Include(a => a.Body).ToListAsync();
+```
+
+See [On-demand members](on-demand-members.md).
+
 ## How do I find the places near a point?
 
 Declare the place as a `GeoPoint` member with `[Index]`, and filter or order on
 `GeoFunctions.Distance(s.Location, here)`, in metres. See [Geographic points](geo-points.md).
+
+## How do I find the rows nearest to an embedding?
+
+Declare the embedding as a `float[]` member with `[Vector(n)]` and `[Index]`, order the query by
+`VectorFunctions.Distance(p.Embedding, question)` and take a page. See [Vector search](vector-search.md).
 
 ## How do I run a query over a list of ids?
 

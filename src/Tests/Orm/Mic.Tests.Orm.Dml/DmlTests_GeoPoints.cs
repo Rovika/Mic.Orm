@@ -1,7 +1,7 @@
 using Mic.Common;
 using Mic.Linq;
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 
 namespace Mic.Tests.Orm.Db;
 
@@ -75,6 +75,14 @@ public abstract partial class DmlTests {
     }
     await session.SaveChangesAsync();
     var places = session.EntitySet<Dml.IPlace>().Where(p => p.Name.StartsWith(tag));
+
+    // DB2 HOLDS A POINT AS BYTES and computes no distance: the query is refused by name at translation.
+    if (Fixture.ServerKind == DbServerKind.Db2) {
+      var refused = await Assert.ThrowsAsync<NotSupportedException>(
+        () => places.Where(p => GeoFunctions.Distance(p.Location, oslo) < 1_000_000).ToListAsync());
+      StringAssert.Contains(refused.Message, "GeoDistance");
+      return;
+    }
 
     // ----- within a radius: a thousand kilometres of Oslo is Oslo alone ------------------------------------------
     var near = await places.Where(p => GeoFunctions.Distance(p.Location, oslo) < 1_000_000).ToListAsync();

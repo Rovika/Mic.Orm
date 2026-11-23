@@ -1,5 +1,5 @@
 using System.Reflection;
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
 
 namespace Mic.DbTool;
@@ -17,6 +17,7 @@ public static class ProviderLoader {
     DbServerKind.MsSql => "Mic.Orm.Db.SqlServer",
     DbServerKind.Oracle => "Mic.Orm.Db.Oracle",
     DbServerKind.SQLite => "Mic.Orm.Db.Sqlite",
+    DbServerKind.Db2 => "Mic.Orm.Db.Db2",
     _ => throw new NotSupportedException($"MIC has no provider for {kind}."),
   };
 

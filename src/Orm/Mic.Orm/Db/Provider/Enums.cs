@@ -156,6 +156,46 @@ public enum DbFeatures : long {
   /// <remarks>Declared where the channel measured faster than the multi-row insert. A temp table is filled through
   /// it.</remarks>
   BulkInsert = 1L << 34,
+
+  // ----- traits of one server; the suffix of a flag names the server that declares it ------------------------------
+
+  /// <summary>Rows as a table source from a bound parameter only: the items of a JSON array held in a column are
+  /// refused at translation.</summary>
+  /// <remarks>Db2 spreads no JSON array into rows, and takes the rows of a parameter as XML. See
+  /// <see cref="SqlDialect.JsonRowsSource"/>.</remarks>
+  JsonRowsOfParameterOnlyDb2 = 1L << 40,
+
+  /// <summary>A null for a Guid column written as the literal rather than bound.</summary>
+  /// <remarks>Db2 holds a Guid as bytes, and IBM's driver sends a bound null as text, which a binary column refuses
+  /// (<c>SQL0301N</c>).</remarks>
+  NullGuidAsLiteralDb2 = 1L << 41,
+
+  /// <summary>A delete's <c>key IN (select)</c> that reads the finding select through a derived table rather than
+  /// directly.</summary>
+  /// <remarks>MySQL refuses a sub-query that reads the table it deletes from (error 1093), and accepts the same
+  /// select as a derived table, which is materialized first.</remarks>
+  DeleteSubQueryWrappedMySql = 1L << 42,
+
+  /// <summary>An <c>EXISTS</c> over the rows of a document read off the outer row written as a count compared to
+  /// zero.</summary>
+  /// <remarks>MySQL 8.4 answers <c>EXISTS</c> over a <c>JSON_TABLE</c> that reads the outer row with nothing,
+  /// whatever the rows hold; a <c>COUNT(*)</c> over the same source is right.</remarks>
+  CountsJsonRowsForExistsMySql = 1L << 43,
+
+  /// <summary>A spatial index that wants its column declared <c>NOT NULL</c>, so that a nullable point gets no
+  /// index.</summary>
+  SpatialIndexNeedsNotNullMySql = 1L << 44,
+
+  /// <summary>An identity that is a shape and not a marker: the server makes one of a column by its type and its key
+  /// alone.</summary>
+  /// <remarks>The SQLite loader reads the shape, so a key of that shape is read as an identity whether the model
+  /// declares one or not, and the comparison does not report it.</remarks>
+  IdentityIsImpliedSqlite = 1L << 45,
+
+  /// <summary>A temp table whose columns take no <c>NOT NULL</c>, so every column of one is declared nullable.
+  /// </summary>
+  /// <remarks>Oracle's private temporary table takes no constraint (<c>ORA-14451</c>).</remarks>
+  NoTempTableNotNullOracle = 1L << 46,
 }
 
 /// <summary>Specifies how a server stores a computed column.</summary>
@@ -223,6 +263,11 @@ public enum DbSpecialType {
   /// <remarks>A server with no JSON type registers nothing here, and the member takes the unlimited text type.
   /// </remarks>
   Json,
+  /// <summary>The server's vector type, such as pgvector's <c>vector</c>, for a member held as a vector; its size
+  /// is the number of dimensions.</summary>
+  /// <remarks>A server with no vector type registers nothing here, and the member is an error of the model.
+  /// </remarks>
+  Vector,
 }
 
 /// <summary>Specifies how a full-text match and a rank reach the entity's full-text index on a server. See

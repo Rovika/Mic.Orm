@@ -1,4 +1,3 @@
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
 
@@ -312,7 +311,7 @@ public class DbModelComparer {
       description = Join(description, target.IsNullable ? "now nullable" : "now NOT NULL");
     // Where an identity is a shape and not a marker, the database reads one off any key of that shape; the model not
     // declaring it is the same column, which no statement could change.
-    var isImpliedIdentity = source.IsIdentity && Provider.SqlDialect.IdentityIsImplied;
+    var isImpliedIdentity = source.IsIdentity && Provider.Supports(DbFeatures.IdentityIsImpliedSqlite);
     if (source.IsIdentity != target.IsIdentity && !isImpliedIdentity)
       description = Join(description, target.IsIdentity ? "now identity" : "no longer identity");
 
@@ -372,11 +371,18 @@ public class DbModelComparer {
     if (Provider.IndexTypes.Count > 0 && source.IndexType != target.IndexType)
       description = Join(description, $"index type {source.IndexType} → {target.IndexType} — the index is rebuilt");
 
+    // A vector index serves one metric, so another metric is another index.
+    if (source.VectorMetric != target.VectorMetric)
+      description = Join(description,
+        $"metric {DescribeMetric(source)} → {DescribeMetric(target)} — the index is rebuilt");
+
     // A filter is compared through its hash, since the server may rewrite the text.
     if (FilterHash(source) != FilterHash(target))
       description = Join(description, "filter changed — the index is rebuilt");
     return description == null;
   }
+
+  private static string DescribeMetric(DbKeyInfo key) => key.VectorMetric?.ToString() ?? "none";
 
   /// <summary>Gets the hash a key's filter is compared by: the hash MIC stored beside the index where there is one,
   /// otherwise the hash of the filter text.</summary>

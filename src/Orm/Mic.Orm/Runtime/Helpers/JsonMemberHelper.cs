@@ -84,6 +84,20 @@ public static class JsonMemberHelper {
     record.SetLoadedJsonText(member, text);
   }
 
+  /// <summary>Puts a document read as a value of a projection on a record as loaded: the object, or the text of a
+  /// member held as text, with the text a save reads the document's changes against.</summary>
+  /// <param name="record">The record the member belongs to.</param>
+  /// <param name="member">The JSON member.</param>
+  /// <param name="value">The value the projection answered, or <see langword="null"/> for a null document.</param>
+  internal static void SetLoadedDocument(EntityRecord record, EntityMemberInfo member, object? value) {
+    if (value is null or string) {
+      SetLoadedJson(record, member, value);
+      return;
+    }
+    record.SetLoadedValue(member, value);
+    record.SetLoadedJsonText(member, Serialize(record, member)?.Text);
+  }
+
   /// <summary>Gets a member's object, reading it out of the document's text on the first call.</summary>
   /// <param name="record">The record the member belongs to.</param>
   /// <param name="member">The JSON member.</param>
@@ -109,7 +123,7 @@ public static class JsonMemberHelper {
     ArgumentNullException.ThrowIfNull(record);
     ArgumentNullException.ThrowIfNull(member);
     if (!record.Loaded.IsSet(member.DataIndex) && record.Session is { } session)
-      session.LoadRecord(record);
+      session.LoadValue(record, member);
     return Serialize(record, member)?.Text;
   }
 

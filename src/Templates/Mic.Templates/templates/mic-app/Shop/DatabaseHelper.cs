@@ -16,6 +16,9 @@ using Mic.Orm.Db.Oracle;
 #if (SQLite)
 using Mic.Orm.Db.Sqlite;
 #endif
+#if (Db2)
+using Mic.Orm.Db.Db2;
+#endif
 using Shop.Model;
 
 namespace Shop;
@@ -40,6 +43,9 @@ public static class DatabaseHelper {
 #endif
 #if (SQLite)
   public static DbProvider CreateProvider() => new SqliteProvider();
+#endif
+#if (Db2)
+  public static DbProvider CreateProvider() => new Db2Provider();
 #endif
 
   /// <summary>Builds the application and connects it, bringing the database up to the model.</summary>

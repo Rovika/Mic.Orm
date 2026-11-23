@@ -47,22 +47,23 @@ public static class MemberValueAccessorHelper {
 
   // ----- columns and transients ----------------------------------------------------------------------------------------
 
-  /// <summary>Gets a column member's value, loading the record first if it does not hold the member yet.</summary>
-  /// <remarks>The load is synchronous and happens once per record, since expanding fills every member. A
-  /// <see langword="null"/> slot is coalesced to the member's default, so a key member nobody has set reads as the
-  /// default of its type; <see cref="EntityRecord.GetRawValue"/> still sees the null.</remarks>
+  /// <summary>Gets a column member's value, loading it first if the record does not hold it yet.</summary>
+  /// <remarks>The load is synchronous: the record's row, which fills every member but the on-demand ones, or the
+  /// member alone where it is on demand. A <see langword="null"/> slot is coalesced to the member's default, so a
+  /// key member nobody has set reads as the default of its type; <see cref="EntityRecord.GetRawValue"/> still sees
+  /// the null.</remarks>
   private static object? GetColumnValue(EntityRecord record, EntityMemberInfo member) {
     if (!record.Loaded.IsSet(member.DataIndex) && record.Session is { } session)
-      session.LoadRecord(record);
+      session.LoadValue(record, member);
 
     return record.GetRawValue(member) ?? member.DefaultValue;
   }
 
-  /// <summary>Gets a JSON member's object, loading the record first if it does not hold the member yet and making
-  /// the object from the document's text on the first read.</summary>
+  /// <summary>Gets a JSON member's object, loading it first if the record does not hold it yet and making the object
+  /// from the document's text on the first read.</summary>
   private static object? GetJsonValue(EntityRecord record, EntityMemberInfo member) {
     if (!record.Loaded.IsSet(member.DataIndex) && record.Session is { } session)
-      session.LoadRecord(record);
+      session.LoadValue(record, member);
 
     return JsonMemberHelper.GetObject(record, member) ?? member.DefaultValue;
   }

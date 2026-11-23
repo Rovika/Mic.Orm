@@ -3,7 +3,6 @@ using Mic.Linq.ExpressionTree;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling.Db;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Readers;

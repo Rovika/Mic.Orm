@@ -1,5 +1,5 @@
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Model.Upgrades;

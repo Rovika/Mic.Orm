@@ -1,5 +1,4 @@
 using System.Text;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
 
@@ -24,6 +23,8 @@ public class DbDdlBuilder {
 
     if (model.Tables.Any(HasGeoPoint) && GeoPointPrerequisite() is { } prerequisite)
       statements.Add(prerequisite);
+    if (model.Tables.Any(HasVector) && VectorPrerequisite() is { } vectorPrerequisite)
+      statements.Add(vectorPrerequisite);
 
     foreach (var schema in model.Schemas) {
       // A schema MIC does not manage is never created; whether it is managed is known only through the entity schema.
@@ -212,12 +213,22 @@ public class DbDdlBuilder {
   /// <summary>Determines whether a table has a geographic point column.</summary>
   public static bool HasGeoPoint(DbTableInfo table) => table.Columns.Any(c => c.IsGeoPoint);
 
+  /// <summary>Builds the statement that makes the server able to hold a vector, such as pgvector's extension.
+  /// </summary>
+  /// <returns>The statement, or <see langword="null"/> where the server needs nothing.</returns>
+  public DdlStatement? VectorPrerequisite() =>
+    Dialect.VectorPrerequisite is { } text ? new DdlStatement(DdlKind.Prerequisite, text, "vector") : null;
+
+  /// <summary>Determines whether a table has a vector column.</summary>
+  public static bool HasVector(DbTableInfo table) => table.Columns.Any(c => c.IsVector);
+
   /// <summary>Builds the statement that creates a temp table on a session's connection: its columns, and no key or
   /// constraint, since nothing enforces them on rows that live as long as the session.</summary>
   public virtual DdlStatement CreateTempTable(DbTableInfo table) {
     ArgumentNullException.ThrowIfNull(table);
+    var allNullable = Provider.Supports(DbFeatures.NoTempTableNotNullOracle);
     var columns = string.Join("," + Dialect.LineBreak,
-      table.Columns.Select(c => Dialect.Indent + ColumnSpec(c, asNullable: !Dialect.TempTableNotNull)));
+      table.Columns.Select(c => Dialect.Indent + ColumnSpec(c, asNullable: allNullable)));
     return new DdlStatement(DdlKind.CreateTable, string.Format(Dialect.CreateTempTable, table.RefName, columns), table.Name);
   }
 
@@ -349,7 +360,10 @@ public class DbDdlBuilder {
       : Dialect.IndexTypeSyntax(key.IndexType);
 
     // A full-text index is over the columns, or over a text-search expression where the server has no such index kind.
-    var columns = key.IndexType == DbIndexType.FullText ? Dialect.BuildFullTextIndexColumns(key) : ColumnList(key);
+    // A vector index may state its metric with the column.
+    var columns = key.IndexType == DbIndexType.FullText ? Dialect.BuildFullTextIndexColumns(key)
+      : key.VectorMetric != null ? Dialect.BuildVectorIndexColumns(key) ?? ColumnList(key)
+      : ColumnList(key);
     var text = new StringBuilder(
       string.Format(template, Dialect.Quote(key.Name), key.Table.RefName, columns,
         Dialect.QualifiedName(key.Table.Schema.Name, key.Name), typePrefix, typeClause));
@@ -394,6 +408,22 @@ public class DbDdlBuilder {
   public virtual DdlStatement AddColumn(DbColumnInfo column, bool asNullable = false) =>
     new(DdlKind.AddColumn,
       string.Format(Dialect.AddColumn, column.Table!.RefName, ColumnSpec(column, asNullable)), column.Name);
+
+  /// <summary>Builds the statements that add a column to a table that exists: the ADD COLUMN, between the
+  /// dialect's two statements where the column is computed and the server wants the table prepared for one.
+  /// </summary>
+  /// <param name="column">The column.</param>
+  /// <param name="asNullable"><see langword="true"/> to add a required column as nullable, to be tightened later;
+  /// otherwise, <see langword="false"/>.</param>
+  /// <returns>The statements, in the order they run.</returns>
+  public virtual IEnumerable<DdlStatement> AddColumnToTable(DbColumnInfo column, bool asNullable = false) {
+    var table = column.Table!.RefName;
+    if (column.IsComputed && Dialect.BeforeAddComputedColumn is { } before)
+      yield return new DdlStatement(DdlKind.AddColumn, string.Format(before, table), column.Name);
+    yield return AddColumn(column, asNullable);
+    if (column.IsComputed && Dialect.AfterAddComputedColumn is { } after)
+      yield return new DdlStatement(DdlKind.AddColumn, string.Format(after, table), column.Name);
+  }
 
   /// <summary>Builds the statements that change an existing column's type, default and, where it loosens, its
   /// nullability.</summary>
@@ -492,6 +522,15 @@ public class DbDdlBuilder {
   public virtual DdlStatement DropColumn(DbColumnInfo column) =>
     new(DdlKind.DropColumn,
       string.Format(Dialect.DropColumn, column.Table!.RefName, column.QuotedName), column.Name);
+
+  /// <summary>Builds the statement that runs after one of a table's columns was dropped or altered, from
+  /// <see cref="SqlDialect.AfterTableModified"/>.</summary>
+  /// <param name="table">The table.</param>
+  /// <returns>The statement, or <see langword="null"/> where the server needs none.</returns>
+  public virtual DdlStatement? AfterTableModified(DbTableInfo table) =>
+    Dialect.AfterTableModified is { } text
+      ? new DdlStatement(DdlKind.AlterColumn, string.Format(text, table.RefName), table.Name)
+      : null;
 
   public virtual DdlStatement DropTable(DbTableInfo table) =>
     new(DdlKind.DropTable, string.Format(Dialect.DropTable, table.RefName), table.Name);

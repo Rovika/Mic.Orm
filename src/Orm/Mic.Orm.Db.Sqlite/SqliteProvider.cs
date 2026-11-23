@@ -1,7 +1,6 @@
 using System.Data.Common;
 using Mic.Common;
 using Mic.Linq;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
@@ -64,7 +63,8 @@ public class SqliteProvider : DbProvider {
     | DbFeatures.BinaryGuids                  // a blob, since there is no uuid type
     | DbFeatures.IdentityColumns              // INTEGER PRIMARY KEY
     | DbFeatures.BulkInsertAdvancesIdentity
-    | DbFeatures.FullText;                    // an FTS5 table beside the entity's, joined by the key
+    | DbFeatures.FullText                     // an FTS5 table beside the entity's, joined by the key
+    | DbFeatures.IdentityIsImpliedSqlite;     // a plain int key is declared the same way and reads back as one
 
   /// <summary>Gets the case the server folds an unquoted identifier to; SQLite stores an identifier as written.
   /// </summary>

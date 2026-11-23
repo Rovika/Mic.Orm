@@ -73,7 +73,8 @@ public class TemplateCommandBuilder {
     return new DataCommand(dbCommand, DbExecutionType.Reader, description) {
       ResultReader = template.ResultKind switch {
         QueryResultKind.Entities => new EntityRecordReader(session,
-          (EntityTypeInfo)template.ResultEntity!, [.. template.ResultMembers.Cast<EntityMemberInfo>()]),
+          (EntityTypeInfo)template.ResultEntity!, [.. template.ResultMembers.Cast<EntityMemberInfo>()],
+          request.Flags.HasFlag(DataRequestFlags.RefreshTracked)),
         QueryResultKind.Rows when template.Result is { Slots: { } slots } =>
           new BundleReader(session, (TransientEntityInfo)template.ResultEntity!, slots, template.JsonTypedColumns),
         QueryResultKind.Rows => new ProjectionReader(Provider, (TransientEntityInfo)template.ResultEntity!, template.JsonTypedColumns),
@@ -127,13 +128,13 @@ public class TemplateCommandBuilder {
       : dialect.JsonRowsSource(source.Reference, columns, alias);
   }
 
-  /// <summary>Binds the rows as one JSON value, or stages them in a temp table past the threshold, and returns how
-  /// the statement refers to them.</summary>
+  /// <summary>Binds the rows as one value, JSON unless the provider serializes them otherwise, or stages them in a
+  /// temp table past the threshold, and returns how the statement refers to them.</summary>
   private (string Reference, bool IsTable) StageRows(System.Data.Common.DbCommand dbCommand, SqlPlaceholder owner,
       IReadOnlyList<JsonRowsColumn> columns, IReadOnlyList<object?[]> rows, RowsStaging staging) {
-    var json = JsonRowsHelper.Serialize(Provider, columns, rows);
-    if (json.Length <= staging.Session.Database.Settings.RowsTempTableThreshold)
-      return (AddParameter(dbCommand, owner.Name, json), false);
+    var text = Provider.SerializeRows(columns, rows);
+    if (text.Length <= staging.Session.Database.Settings.RowsTempTableThreshold)
+      return (AddParameter(dbCommand, owner.Name, text), false);
 
     var dialect = Provider.SqlDialect;
     // The table is named into the model's first schema, for the server that wants a temp table in a database.

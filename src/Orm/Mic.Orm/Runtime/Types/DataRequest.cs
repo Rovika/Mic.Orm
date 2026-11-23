@@ -3,7 +3,6 @@ using Mic.Linq.Model;
 using Mic.Linq;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Readers;
 using Mic.Orm.Db.Sql;

@@ -1,10 +1,9 @@
 using System.Data.Common;
 using System.Text.Json;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
+using Mic.Orm.Logging;
 using Mic.Orm.Model;
 using Mic.Orm.Runtime;
 

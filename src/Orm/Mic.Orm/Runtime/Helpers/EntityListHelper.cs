@@ -1,5 +1,4 @@
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Model;
 
 namespace Mic.Orm.Runtime;
@@ -47,7 +46,7 @@ internal static class EntityListHelper {
   /// target the session has marked for deletion.</summary>
   /// <param name="linkRows">The rows the load produced, each with a link slot and a target slot.</param>
   /// <returns>The pairs.</returns>
-  public static List<LinkRecordPair> GetLinkRecordPairs(IReadOnlyList<IEntityData> linkRows) {
+  public static List<LinkRecordPair> GetLinkRecordPairs(IReadOnlyList<ProjectionData> linkRows) {
     ArgumentNullException.ThrowIfNull(linkRows);
     var pairs = new List<LinkRecordPair>(linkRows.Count);
     foreach (var linkRow in linkRows) {

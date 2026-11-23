@@ -1,5 +1,3 @@
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
@@ -8,6 +6,7 @@ using Mic.Orm.Db.Postgres;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sqlite;
 using Mic.Orm.Db.SqlServer;
+using Mic.Orm.Logging;
 using Microsoft.Data.Sqlite;
 
 namespace Mic.Tests.Orm;

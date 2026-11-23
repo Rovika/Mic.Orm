@@ -5,6 +5,9 @@ connects to the database, and a test.
 
 ## Install the template and the tool
 
+MIC ORM needs .NET 10 or later: its packages target `net10.0` and do not install into a project on .NET
+Standard, .NET Framework or an earlier .NET.
+
 MIC ORM is a preview. Its packages are published to a feed of their own, not to nuget.org. Add the feed once:
 
 ```bash
@@ -27,9 +30,9 @@ from an existing database.
 dotnet new mic-app -n Shop --provider Postgres
 ```
 
-`--provider` is `Postgres` (the default), `MySql`, `MsSql`, `Oracle` or `SQLite`. The name becomes the solution,
-the namespace, the application class, the database schema in lower case (`shop`) and the environment variable in
-upper case (`SHOP_CONN`). It should be a valid C# identifier.
+`--provider` is `Postgres` (the default), `MySql`, `MsSql`, `Oracle`, `SQLite` or `Db2`. The name becomes the
+solution, the namespace, the application class, the database schema in lower case (`shop`) and the environment
+variable in upper case (`SHOP_CONN`). It should be a valid C# identifier.
 
 What is made, for `-n Shop`, in a new folder `Shop`:
 

@@ -1,5 +1,4 @@
 using Mic.Linq;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;

@@ -107,6 +107,9 @@ public class DbTypeRegistryTests {
     byte[] Blob { get; set; }
     [Column(DbTypeSpec = "char(2)")] string Country { get; set; }
     [Column(DbTypeSpec = "nvarchar(10)")] string Wrong { get; set; }
+    int[] Counts { get; set; }
+    List<string>? Tags { get; set; }
+    [Json] List<int> Document { get; set; }
   }
 
   private enum Colour { Red, Green }
@@ -165,6 +168,27 @@ public class DbTypeRegistryTests {
     var empty = new DbTypeRegistry();                  // nothing registered at all
     Assert.IsNull(empty.MapMember(Widget.GetMember("Id"), out error));
     Assert.IsTrue(error!.Contains("no database type"));
+  }
+
+  // An array or a List of scalars is an array column on PostgreSQL. Another server has no type for it and the error
+  // says what to do there. The same type under [Json] stays a document.
+  [TestMethod]
+  public void ArrayMember_IsAnArrayTypeOnPostgresAndAnErrorElsewhere() {
+    Assert.AreEqual(typeof(int), Widget.GetMember("Counts").ArrayItemType);
+    Assert.AreEqual(typeof(string), Widget.GetMember("Tags").ArrayItemType);
+    Assert.IsNull(Widget.GetMember("Document").ArrayItemType);
+    Assert.IsNull(Widget.GetMember("Blob").ArrayItemType);
+
+    Assert.AreEqual("integer[]", Spec("Counts"));
+    Assert.AreEqual("text[]", Spec("Tags"));
+    Assert.AreEqual("jsonb", Spec("Document"));
+    // The catalog's name for the type reads back as the same one.
+    Assert.AreEqual("integer[]", Registry.FindByName("_int4")!.Name);
+
+    Assert.IsNull(new SqliteProvider().TypeRegistry.MapMember(Widget.GetMember("Counts"), out var error));
+    StringAssert.Contains(error, "[Json]");
+    Assert.IsNull(new SqlServerProvider().TypeRegistry.MapMember(Widget.GetMember("Tags"), out error));
+    StringAssert.Contains(error, "array type");
   }
 
   // A binary that says its size takes the server's bounded type where it has one; with no size, or marked unlimited,

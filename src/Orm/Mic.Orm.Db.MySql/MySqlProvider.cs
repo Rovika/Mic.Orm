@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
 using MySqlConnector;
@@ -45,7 +44,10 @@ public class MySqlProvider : DbProvider {
     | DbFeatures.FullText                      // a FULLTEXT index, matched with MATCH … AGAINST
     | DbFeatures.IdentityCarriedInBatch       // LAST_INSERT_ID() into a session variable
     | DbFeatures.RowLocks                      // FOR UPDATE on the root select; REPEATABLE READ for a consistent read
-    | DbFeatures.ParameterPrefixSharedWithVariables;   // @total is a user variable, written like a parameter
+    | DbFeatures.ParameterPrefixSharedWithVariables    // @total is a user variable, written like a parameter
+    | DbFeatures.DeleteSubQueryWrappedMySql            // a sub-query may not read the delete's table (error 1093)
+    | DbFeatures.CountsJsonRowsForExistsMySql          // EXISTS over a JSON_TABLE off the outer row answers nothing
+    | DbFeatures.SpatialIndexNeedsNotNullMySql;        // "All parts of a SPATIAL index must be NOT NULL"
 
   /// <summary>Gets the case the server folds an unquoted identifier to.</summary>
   /// <remarks>A table name folds to lower case on a server configured that way and is preserved on another, so

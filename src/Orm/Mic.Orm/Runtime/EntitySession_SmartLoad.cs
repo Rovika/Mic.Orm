@@ -4,7 +4,6 @@ using Mic.Linq.ExpressionTree;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Sql;
 using Mic.Orm.Model;
@@ -79,7 +78,7 @@ public partial class EntitySession {
         if (record.Status != EntityStatus.Deleted && EntityListHelper.GetOwnerKeyOfRow(record, member) is { } ownerKey)
           AddOwnerRow(ownerKey, record);
     } else {
-      var rows = await RunListLoadAsync(member, manyOwners: true, keys) as IReadOnlyList<IEntityData> ?? [];
+      var rows = await RunListLoadAsync(member, manyOwners: true, keys) as IReadOnlyList<ProjectionData> ?? [];
       foreach (var pair in EntityListHelper.GetLinkRecordPairs(rows))
         if (EntityListHelper.GetOwnerKeyOfRow(pair.Link, member) is { } ownerKey)
           AddOwnerRow(ownerKey, pair);
@@ -250,14 +249,14 @@ public partial class EntitySession {
       foreach (var record in records)
         AddOwnerResultRow(resultsByOwnerKey, EntityListHelper.GetOwnerKeyOfRow(record, member), record, template);
     else
-      foreach (var row in batchResult as IReadOnlyList<IEntityData> ?? [])
+      foreach (var row in batchResult as IReadOnlyList<ProjectionData> ?? [])
         AddOwnerResultRow(resultsByOwnerKey, QueryablePropertyHelper.ReadOwnerKey(row, member), row, template);
     return resultsByOwnerKey;
   }
 
   private static object? CreateEmptyResult(QueryResultKind kind) => kind switch {
     QueryResultKind.Scalar => null,
-    QueryResultKind.Rows => new List<IEntityData>(),
+    QueryResultKind.Rows => new List<ProjectionData>(),
     QueryResultKind.Values => new List<object?>(),
     _ => new List<EntityRecord>(),
   };
@@ -269,14 +268,14 @@ public partial class EntitySession {
     if (rowOwner is not { } ownerKey || !resultsByOwnerKey.TryGetValue(ownerKey, out var ownerResult))
       return;
     switch (ownerResult) {
-      case List<IEntityData> rows:
-        rows.Add(CopyIntoCallerShape((IEntityData)row, (TransientEntityInfo)template.ResultEntity!));
+      case List<ProjectionData> rows:
+        rows.Add(CopyIntoCallerShape((ProjectionData)row, (TransientEntityInfo)template.ResultEntity!));
         break;
       case List<object?> values:
-        values.Add(((IEntityData)row).GetValue(QueryablePropertyHelper.RowSlot));
+        values.Add(((ProjectionData)row).GetValue(QueryablePropertyHelper.RowSlot));
         break;
       case List<EntityRecord> group:
-        var slot = row is IEntityData data ? data.GetValue(QueryablePropertyHelper.RowSlot) : row;
+        var slot = row is ProjectionData data ? data.GetValue(QueryablePropertyHelper.RowSlot) : row;
         var record = slot as EntityRecord ?? EntityHelper.GetRecord(slot!);
         if (record.Status != EntityStatus.Deleted)
           group.Add(record);
@@ -284,13 +283,13 @@ public partial class EntitySession {
       default:
         // The caller's type, which the single-owner statement answers as.
         resultsByOwnerKey[ownerKey] = Database.Provider.ConvertReadValue(
-          ((IEntityData)row).GetValue(QueryablePropertyHelper.RowSlot), template.ScalarType!);
+          ((ProjectionData)row).GetValue(QueryablePropertyHelper.RowSlot), template.ScalarType!);
         break;
     }
   }
 
   /// <summary>Copies a batch row into a row of the caller's own shape, without the owner's key beside it.</summary>
-  private static ProjectionData CopyIntoCallerShape(IEntityData row, TransientEntityInfo shape) {
+  private static ProjectionData CopyIntoCallerShape(ProjectionData row, TransientEntityInfo shape) {
     var copy = new ProjectionData(shape);
     foreach (var shapeMember in shape.Members)
       copy.SetValue(shapeMember, row.GetValue(shapeMember.Name));
@@ -316,7 +315,7 @@ public partial class EntitySession {
     switch (cachedResult) {
       case List<EntityRecord> records:
         return records.Select(r => (object?)r.EntityInstance).ToList();
-      case List<IEntityData> rows:
+      case List<ProjectionData> rows:
         ReplaceRecordsWithEntities(rows);
         return rows;
       default:

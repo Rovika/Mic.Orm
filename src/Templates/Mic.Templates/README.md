@@ -17,7 +17,7 @@ From the repository, the ORM packages and the template packed into a local feed 
 dotnet pack src/Orm/Mic.Orm/Mic.Orm.csproj -o ./nupkg
 dotnet pack src/Orm/Mic.Orm.Db.Postgres/Mic.Orm.Db.Postgres.csproj -o ./nupkg
 dotnet pack src/Templates/Mic.Templates/Mic.Templates.csproj -o ./nupkg
-dotnet new install ./nupkg/Mic.Templates.0.9.0-preview.1.nupkg
+dotnet new install ./nupkg/Mic.Templates.0.10.0-preview.1.nupkg
 ```
 
 A generated application restores the MIC packages from the feeds the machine knows; with a local feed, point a

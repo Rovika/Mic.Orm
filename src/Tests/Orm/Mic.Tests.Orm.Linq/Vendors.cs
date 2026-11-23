@@ -42,3 +42,9 @@ public static class SuiteCleanup {
   [AssemblyCleanup]
   public static Task DropSharedDatabasesAsync() => LinqTests.DropSharedDatabasesAsync();
 }
+
+// Db2 runs after the others too: its container is the largest of the set.
+[TestClass, DoNotParallelize]
+public sealed class Db2_LinqTests : LinqTests {
+  protected override ProviderFixture Fixture { get; } = new Db2Fixture();
+}

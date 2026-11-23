@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 using Mic.Linq;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Sql;
 
@@ -137,17 +136,28 @@ public class SqlDialect {
   /// <remarks>Set on a server with no Boolean value, where a comparison or an <c>EXISTS</c> is not one.</remarks>
   public string? ConditionAsValue;
 
+  /// <summary>Builds the form a parameter or a null takes where nothing beside it gives it a type, such as a column
+  /// of a select list, a result of a <c>CASE</c> or an argument of <c>COALESCE</c>: the value itself by default.
+  /// </summary>
+  /// <param name="value">The value as the statement writes it, a parameter or <c>NULL</c>.</param>
+  /// <param name="clrType">The CLR type of the value.</param>
+  /// <param name="type">The database type a parameter of the CLR type maps to, or <see langword="null"/> if none is
+  /// registered.</param>
+  /// <returns>The value in the form the server takes there.</returns>
+  /// <remarks>A dialect overrides this where the server takes a parameter's type from what stands beside it and
+  /// refuses one that stands alone, as Db2 does.</remarks>
+  public virtual string BuildUntypedValue(string value, Type clrType, DbTypeInfo? type) => value;
+
+  /// <summary>Specifies an average over an integer term on a server whose <c>AVG</c> of integers is an integer, cut
+  /// of its fraction; <c>{0}</c> is the term. <see langword="null"/> where the server's average has the fraction.
+  /// </summary>
+  public string? IntegerAverage;
+
   /// <summary>Specifies the head of a delete written from a query; <c>{0}</c> is the table, <c>{1}</c> the alias its
   /// conditions name it by. The WHERE clause follows.</summary>
   /// <remarks>The servers differ in how the alias is declared: with <c>AS</c>, without it on Oracle, and named again
   /// before the FROM on SQL Server.</remarks>
   public string DeleteFrom = "DELETE FROM {0} AS {1}";
-
-  /// <summary>Specifies whether a delete's <c>key IN (select)</c> reads the finding select through a derived table
-  /// rather than directly.</summary>
-  /// <remarks>MySQL refuses a sub-query that reads the table it deletes from, and accepts the same select as a
-  /// derived table.</remarks>
-  public bool DeleteSubQueryWrapped;
 
   /// <summary>Specifies one item of an update's SET list; <c>{0}</c> is the column, <c>{1}</c> the value, <c>{2}</c>
   /// the table's alias.</summary>
@@ -204,10 +214,6 @@ public class SqlDialect {
 
   public string DropTempTable = "DROP TABLE {0}";
 
-  /// <summary>Indicates whether a temp table's column may be declared <c>NOT NULL</c>; <see langword="false"/> where
-  /// the server takes no constraint on one.</summary>
-  public bool TempTableNotNull = true;
-
   /// <summary>Gets the name a temp table is created and referred to by, from the name the policy gave it: the name
   /// itself by default, with a prefix where the server tells a temp table by one.</summary>
   /// <param name="name">The name the naming policy gave the table.</param>
@@ -257,10 +263,6 @@ public class SqlDialect {
   /// creates such a column; <see langword="null"/> where the server needs nothing.</summary>
   public string? GeoPointPrerequisite;
 
-  /// <summary>Indicates whether a spatial index wants its column declared <c>NOT NULL</c>, so that a nullable point
-  /// gets no index.</summary>
-  public bool SpatialIndexNeedsNotNull;
-
   /// <summary>Builds the statements that run before a spatial index is created, such as the metadata Oracle wants
   /// registered for the column first.</summary>
   /// <param name="index">The index, over one geographic point column.</param>
@@ -272,6 +274,65 @@ public class SqlDialect {
   /// <param name="index">The index, over one geographic point column.</param>
   /// <returns>The statements, or <see langword="null"/> where the server keeps nothing beside the index.</returns>
   public virtual IReadOnlyList<string>? BuildSpatialIndexCleanup(DbKeyInfo index) => null;
+
+  // ----- vectors -----------------------------------------------------------------------------------------------------
+
+  /// <summary>Specifies how a statement reads a vector column in a form the driver returns as an array of floats;
+  /// <c>{0}</c> is the column. The column itself where the driver reads the server's type.</summary>
+  public string VectorRead = "{0}";
+
+  /// <summary>Specifies how a bound array of floats becomes the server's vector in an insert or an update;
+  /// <c>{0}</c> is the bound value. The value itself where the driver binds the server's type.</summary>
+  public string VectorWrite = "{0}";
+
+  /// <summary>Gets the statement that makes the server able to hold a vector, run before anything that creates such
+  /// a column; <see langword="null"/> where the server needs nothing.</summary>
+  public string? VectorPrerequisite;
+
+  /// <summary>Specifies the cosine distance between two vectors; <c>{0}</c> and <c>{1}</c> are the vectors.
+  /// <see langword="null"/> where the server has none.</summary>
+  public string? VectorCosineDistance;
+
+  /// <summary>Specifies the Euclidean distance between two vectors; <c>{0}</c> and <c>{1}</c> are the vectors.
+  /// <see langword="null"/> where the server has none.</summary>
+  public string? VectorEuclideanDistance;
+
+  /// <summary>Specifies the negated dot product of two vectors; <c>{0}</c> and <c>{1}</c> are the vectors.
+  /// <see langword="null"/> where the server has none.</summary>
+  public string? VectorDotProductDistance;
+
+  /// <summary>Gets how a statement writes the distance between two vectors by a metric.</summary>
+  /// <param name="metric">One of the enumeration values that specifies the metric.</param>
+  /// <returns>The format, with <c>{0}</c> and <c>{1}</c> for the vectors, or <see langword="null"/> where the
+  /// server has no such distance.</returns>
+  public string? GetVectorDistanceFormat(VectorMetric metric) => metric switch {
+    VectorMetric.Cosine => VectorCosineDistance,
+    VectorMetric.Euclidean => VectorEuclideanDistance,
+    VectorMetric.DotProduct => VectorDotProductDistance,
+    _ => null,
+  };
+
+  /// <summary>Builds the column list of a vector index, where the server states the index's metric with the
+  /// column.</summary>
+  /// <param name="index">The index, over one vector column, with its metric.</param>
+  /// <returns>The column list, or <see langword="null"/> where it is the plain one.</returns>
+  public virtual string? BuildVectorIndexColumns(DbKeyInfo index) => null;
+
+  /// <summary>Gets how a statement reads a column whose value travels in another form than the server holds it in:
+  /// a geographic point or a vector.</summary>
+  /// <param name="column">The column.</param>
+  /// <returns>The format, with <c>{0}</c> for the column, or <see langword="null"/> for a column read as it is.
+  /// </returns>
+  public string? GetColumnReadFormat(DbColumnInfo column) =>
+    column.IsGeoPoint ? GeoPointRead : column.IsVector ? VectorRead : null;
+
+  /// <summary>Gets how an insert or an update writes a column whose value travels in another form than the server
+  /// holds it in: a geographic point or a vector.</summary>
+  /// <param name="column">The column.</param>
+  /// <returns>The format, with <c>{0}</c> for the bound value, or <see langword="null"/> for a column written as it
+  /// is.</returns>
+  public string? GetColumnWriteFormat(DbColumnInfo column) =>
+    column.IsGeoPoint ? GeoPointWrite : column.IsVector ? VectorWrite : null;
 
   /// <summary>Specifies a column definition; <c>{0}</c> is the column, <c>{1}</c> the type, <c>{2}</c> the
   /// modifiers.</summary>
@@ -287,12 +348,6 @@ public class SqlDialect {
 
   /// <summary>Specifies the identity clause of a column; SQL Server wants <c>IDENTITY(1,1)</c>.</summary>
   public string Identity = " GENERATED BY DEFAULT AS IDENTITY";
-
-  /// <summary>Specifies whether the server marks no identity column and makes one of a column by its type and its
-  /// key alone.</summary>
-  /// <remarks>A loader there reads the shape, so a key of that shape is read as an identity whether the model
-  /// declares one or not, and the comparison does not report it.</remarks>
-  public bool IdentityIsImplied;
 
   /// <summary>Specifies a computed column's definition; <c>{0}</c> is the column, <c>{1}</c> the type, <c>{2}</c>
   /// the expression, <c>{3}</c> the storage clause, <c>{4}</c> the hash of the expression.</summary>
@@ -540,8 +595,9 @@ public class SqlDialect {
   // ----- common table expressions: one keyword and one hint vary, and nothing else ----------------------------------
 
   /// <summary>Specifies what starts a <c>WITH</c> list holding a recursive definition; SQL Server and Oracle say plain
-  /// <c>WITH</c>.</summary>
-  public string WithRecursive = "WITH RECURSIVE";
+  /// <c>WITH</c>. <see langword="null"/> where MIC writes no recursive query for the server, and one is refused at
+  /// translation.</summary>
+  public string? WithRecursive = "WITH RECURSIVE";
 
   /// <summary>Specifies what follows a recursive definition's closing bracket, with its leading space; <c>{0}</c> is
   /// the level column, quoted. Empty everywhere but Oracle.</summary>
@@ -570,6 +626,11 @@ public class SqlDialect {
   public int MaxLiteralListItems = 100;
 
   public virtual string BuildValueSelect(string value) => string.Format(SelectValue, value);
+
+  /// <summary>Specifies a table source over the items of an array column, one row per item; <c>{0}</c> is the
+  /// column, <c>{1}</c> the source's alias, <c>{2}</c> the name of its one column. <see langword="null"/> where
+  /// the server has no array columns.</summary>
+  public string? ArrayRowsSource;
 
   /// <summary>When overridden in a derived class, builds a table source over the rows of a JSON parameter, a JSON
   /// array of objects bound as one parameter.</summary>
@@ -699,11 +760,6 @@ public class SqlDialect {
     : outer ? $"LEFT OUTER JOIN {source} ON {condition}"
     : $"INNER JOIN {source} ON {condition}";
 
-  /// <summary>Gets a value that indicates whether an <c>EXISTS</c> over the rows of a document read off the outer row
-  /// is written as a count compared to zero, for a server whose <c>EXISTS</c> answers nothing over such a source.
-  /// </summary>
-  public virtual bool CountsJsonRowsForExists => false;
-
   /// <summary>Builds the read of an object or an array out of a JSON document by path, as JSON, the SQL standard's
   /// <c>JSON_QUERY</c> by default.</summary>
   /// <returns>The expression, which evaluates to null where the path names nothing.</returns>
@@ -798,6 +854,21 @@ public class SqlDialect {
 
   /// <summary>Specifies an ADD COLUMN; <c>{0}</c> is the table, <c>{1}</c> the column definition.</summary>
   public string AddColumn = "ALTER TABLE {0} ADD {1}";
+
+  /// <summary>Specifies the statement run before a computed column is added to a table that exists; <c>{0}</c> is
+  /// the table. <see langword="null"/> where the ADD COLUMN is enough.</summary>
+  /// <remarks>Db2 adds a generated column only to a table whose integrity checking is off.</remarks>
+  public string? BeforeAddComputedColumn;
+
+  /// <summary>Specifies the statement run after a computed column is added to a table that exists, the other half
+  /// of <see cref="BeforeAddComputedColumn"/>; <c>{0}</c> is the table.</summary>
+  public string? AfterAddComputedColumn;
+
+  /// <summary>Specifies the statement run after a column of a table was dropped or its type or its nullability
+  /// changed; <c>{0}</c> is the table. <see langword="null"/> where the server needs none.</summary>
+  /// <remarks>Db2 refuses to read or write a table after such a change until the table is reorganized
+  /// (SQL0668N, reason 7), so its statement is the <c>REORG</c>.</remarks>
+  public string? AfterTableModified;
 
   /// <summary>Specifies a DROP COLUMN; <c>{0}</c> is the table, <c>{1}</c> the column.</summary>
   public string DropColumn = "ALTER TABLE {0} DROP COLUMN {1}";

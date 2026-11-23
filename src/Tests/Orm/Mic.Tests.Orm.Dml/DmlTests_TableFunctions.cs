@@ -96,7 +96,7 @@ public abstract partial class DmlTests {
     var statement = session.LastCommands.Single().Sql;
     CollectionAssert.AreEqual(new[] { "1-1", "1-2", "1-3", "2-2", "2-3", "3-3" },
       pairs.Select(x => $"{x.Rank}-{x.Above}").ToList(), $"got {string.Join(" ", pairs.Select(x => $"{x.Rank}-{x.Above}"))} from\n{statement}");
-    StringAssert.Contains(statement, Db.Settings.Provider.SqlDialect.LateralJoin.Split(' ')[0]);
+    StringAssert.Contains(statement, Db.Settings.Provider.SqlDialect.LateralJoin!.Split(' ')[0]);
 
     // ----- by name: the same spread, the argument a member of the row -----------------------------------------
     var byName = await session.ExecuteQueryAsync(session.From("Person")

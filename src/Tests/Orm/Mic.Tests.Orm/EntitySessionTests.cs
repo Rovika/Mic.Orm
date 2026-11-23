@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 using Mic.Orm.Model;
 using Mic.Orm.Runtime;
 
@@ -516,6 +516,45 @@ public class EntitySessionTests {
     attached.FillFrom(partial);
 
     Assert.AreEqual("Portland", attached.GetValue(Address.GetMember("City")));
+  }
+
+  [TestMethod]
+  public void TrackedRecord_TakesWhatItLacksAndIsRefreshedOnlyWhenAsked() {
+    var session = NewSession();
+    var personId = Guid.NewGuid();
+    var firstAddress = Guid.NewGuid();
+    var lastName = Person.GetMember("LastName");
+    var addressKey = Person.GetMember("Address_Id");
+
+    // ----- a row that has a member the tracked record does not hold ------------------------------------------------
+    var tracked = session.Attach(Loaded(session, Person, ("Id", personId), ("Address_Id", firstAddress)));
+    Assert.IsFalse(tracked.Loaded.IsSet(lastName.DataIndex));
+
+    var attached = session.Attach(
+      Loaded(session, Person, ("Id", personId), ("LastName", "Diaz"), ("Address_Id", Guid.NewGuid())));
+
+    Assert.AreSame(tracked, attached, "one identity, one record");
+    Assert.AreEqual("Diaz", tracked.GetRawValue(lastName), "the member it lacked came with the row");
+    Assert.AreEqual(firstAddress, tracked.GetRawValue(addressKey), "a member it held is kept as it was");
+    Assert.AreEqual(EntityStatus.Loaded, tracked.Status);
+    Assert.IsTrue(tracked.Modified.IsEmpty, "being filled in is not a change to save");
+
+    // ----- a refresh replaces what the application did not assign ---------------------------------------------------
+    var person = (IPerson)tracked.EntityInstance;
+    Assert.AreEqual(firstAddress, person.Address.Id);      // the reference resolved, and kept in its slot
+    person.LastName = "Assigned";
+    var secondAddress = Guid.NewGuid();
+
+    session.Attach(
+      Loaded(session, Person, ("Id", personId), ("LastName", "Server"), ("Address_Id", secondAddress)),
+      refreshTracked: true);
+
+    Assert.AreEqual("Assigned", person.LastName, "an assigned member is the application's");
+    Assert.AreEqual(secondAddress, tracked.GetRawValue(addressKey), "a member not assigned is the row's");
+    Assert.AreEqual(secondAddress, person.Address.Id, "and the reference is resolved again from the new key");
+    Assert.AreEqual(EntityStatus.Modified, tracked.Status, "the record is still to be saved");
+    Assert.IsTrue(tracked.Modified.IsSet(lastName.DataIndex));
+    Assert.IsFalse(tracked.Modified.IsSet(addressKey.DataIndex), "what the refresh brought is not a change");
   }
 
   // ----- the weak map ------------------------------------------------------------------------------------------------

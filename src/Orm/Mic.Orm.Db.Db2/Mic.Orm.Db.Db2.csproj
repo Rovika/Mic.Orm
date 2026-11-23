@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<Import Project="..\..\Imports\Packages.proj" />
+
+	<PropertyGroup>
+		<RootNamespace>Mic.Orm.Db.Db2</RootNamespace>
+		<Description>The Db2 provider of MIC ORM, for Db2 on Linux and Windows, over IBM's Net.IBM.Data.Db2. The application adds IBM's driver package for its operating system.</Description>
+	</PropertyGroup>
+
+	<!-- IBM ships the driver as one package per operating system: Net.IBM.Data.Db2 for Windows, Net.IBM.Data.Db2-lnx
+	     for Linux, Net.IBM.Data.Db2-osx for macOS. The managed assembly has one identity in all of them, so the
+	     provider is compiled against the Windows one and carries none: the reference is private and brings nothing
+	     to the output or to the package. The application references the package of the system it runs on, which
+	     also copies the native clidriver folder beside it. -->
+	<ItemGroup>
+		<PackageReference Include="Net.IBM.Data.Db2" Version="10.0.0.400" PrivateAssets="all"
+		                  ExcludeAssets="runtime;build;buildTransitive;native;contentFiles;analyzers" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Mic.Orm\Mic.Orm.csproj" />
+	</ItemGroup>
+
+</Project>

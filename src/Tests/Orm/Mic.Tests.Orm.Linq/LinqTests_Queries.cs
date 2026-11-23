@@ -2,8 +2,6 @@ using Mic.Linq;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Sql;
@@ -169,6 +167,13 @@ public abstract partial class LinqTests {
     Assert.AreEqual(expectedLive.Average(LinqSeed.PriceOf),
       await session.ExecuteScalarAsync<decimal>(live.Average(row => row.Member("Price"))));
     Assert.AreEqual(expectedLive.Min(r => r), await session.ExecuteScalarAsync<int>(live.Min(row => row.Member("Rank"))));
+    // AN AVERAGE OF INTEGERS HAS ITS FRACTION, as LINQ's has, also where the server's own average of integers is an
+    // integer; and the typed extension answers a double, not the selector's type.
+    var expectedRank = expectedLive.Average(r => (double)r);
+    Assert.AreEqual(expectedRank,
+      await session.ExecuteScalarAsync<double>(live.Average(row => row.Member("Rank"))), 1e-9);
+    Assert.AreEqual(expectedRank, await session.EntitySet<Linq.IProduct>()
+      .Where(p => p.Status == Linq.ProductStatus.Live).AverageAsync(p => p.Rank), 1e-9);
 
     WriteTestTitle("a count with a bound parameter, and one matching nothing");
     var above = session.From("Product")

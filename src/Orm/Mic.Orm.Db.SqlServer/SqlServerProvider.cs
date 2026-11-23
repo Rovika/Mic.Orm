@@ -1,9 +1,9 @@
 using System.Data.Common;
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlTypes;
 
 namespace Mic.Orm.Db.SqlServer;
 
@@ -21,13 +21,26 @@ public class SqlServerProvider : DbProvider {
 
   /// <summary>Gets the SQL Server version the statements and the DDL are written for, rather than the one met at
   /// connect time.</summary>
-  /// <remarks>A JSON member is <c>nvarchar(max)</c> on 2022 and the native <c>json</c> type from 2025.</remarks>
+  /// <remarks>A JSON member is <c>nvarchar(max)</c> on 2022 and the native <c>json</c> type from 2025. A vector
+  /// member is the <c>vector</c> type from 2025 and an error of the model on 2022.</remarks>
   /// <value>The version. The default is <see cref="SqlServerVersion.Sql2022"/>.</value>
   public SqlServerVersion TargetVersion { get; }
 
   public override DbConnection CreateConnection(string connectionString) => new SqlConnection(connectionString);
 
   public override DbCommand CreateDbCommand() => new SqlCommand();
+
+  /// <summary>Adapts an array of floats to the driver's vector, the one thing the driver binds such an array as;
+  /// any other value as the base does.</summary>
+  /// <inheritdoc/>
+  public override object AdaptParameterValue(object value) =>
+    value is float[] vector ? new SqlVector<float>(vector) : base.AdaptParameterValue(value);
+
+  /// <summary>Converts the driver's vector to the array of floats a vector member holds; any other value as the
+  /// base does.</summary>
+  /// <inheritdoc/>
+  public override object? ConvertReadValue(object? value, Type targetType) =>
+    value is SqlVector<float> vector ? vector.Memory.ToArray() : base.ConvertReadValue(value, targetType);
 
   /// <summary>Asynchronously writes rows into a table with <c>SqlBulkCopy</c>.</summary>
   /// <param name="connection">The open connection to write on.</param>
@@ -203,6 +216,10 @@ public class SqlServerProvider : DbProvider {
     registry.Add("image", typeof(byte[]), DbTypeFlags.Unlimited | DbTypeFlags.Legacy);
 
     registry.Add("geography", typeof(GeoPoint));
+
+    // The vector type arrived with 2025, for a member marked [Vector]; its size is the number of dimensions.
+    if (targetVersion >= SqlServerVersion.Sql2025)
+      registry.Add("vector", typeof(float[]), DbTypeFlags.TakesSize, specialType: DbSpecialType.Vector);
     return registry;
   }
 }

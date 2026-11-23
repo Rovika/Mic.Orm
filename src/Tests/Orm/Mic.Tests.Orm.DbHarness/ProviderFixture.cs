@@ -1,5 +1,4 @@
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
@@ -92,7 +91,11 @@ public sealed class TestDatabase : IAsyncDisposable {
     if (!Provider.Supports(DbFeatures.BinaryGuids))
       return "'" + value + "'";
     var hex = Convert.ToHexString(ConvertHelper.GuidToBytes(value));
-    return Provider.ServerKind == DbServerKind.Oracle ? $"HEXTORAW('{hex}')" : $"x'{hex}'";
+    return Provider.ServerKind switch {
+      DbServerKind.Oracle => $"HEXTORAW('{hex}')",
+      DbServerKind.Db2 => $"BX'{hex}'",
+      _ => $"x'{hex}'",
+    };
   }
 
   // ----- raw access, for the things MIC cannot do yet ---------------------------------------------------------------

@@ -221,17 +221,24 @@ public class EntityRuntimeTests {
     Assert.IsTrue(record.Loaded.IsSet(rank));
     Assert.IsTrue(record.Modified.IsSet(rank));
 
-    // ----- and one that CHANGES nothing still marks it loaded -----------------------------------------------------------
-    //
-    // "This value was confirmed" is true whether or not it differed from what was already there; "this needs saving" is
-    // not.
+    // ----- and one that CHANGES nothing is not a change to save -----------------------------------------------------------
     record.AcceptChanges();
-    record.Loaded.Clear();
 
     person.Rank = 7;
 
     Assert.IsTrue(record.Loaded.IsSet(rank));
     Assert.IsFalse(record.Modified.IsSet(rank));
+
+    // ----- unless the record does NOT HOLD the member ------------------------------------------------------------------
+    //
+    // The slot of a member that was never loaded is empty, not the row's value: a write equal to it says nothing of
+    // what the row holds, so it is a change, and saved.
+    record.Loaded.Clear();
+
+    person.Rank = 7;
+
+    Assert.IsTrue(record.Loaded.IsSet(rank));
+    Assert.IsTrue(record.Modified.IsSet(rank));
   }
 
   [TestMethod]

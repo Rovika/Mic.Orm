@@ -1,5 +1,5 @@
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 
 namespace Mic.Tests.Orm.Db;
 
@@ -12,7 +12,8 @@ namespace Mic.Tests.Orm.Db;
 /// different from passing — but a vendor named in <c>MIC_TEST_VENDORS</c> and then unreachable is a failure, because
 /// somebody asked.
 ///
-///   MIC_TEST_VENDORS=all              every vendor the suite knows
+///   MIC_TEST_VENDORS=all              every vendor but those of <c>OnlyWhenNamed</c>
+///   MIC_TEST_VENDORS=db2              Db2, which runs only when named
 ///   MIC_TEST_VENDORS=sqlite,postgres  a chosen few
 ///   (unset)                           the default set below
 ///
@@ -26,16 +27,22 @@ public static class TestVendors {
   /// already in the repository; the heavier servers are not.</summary>
   static readonly DbServerKind[] Default = [DbServerKind.SQLite, DbServerKind.Postgres, DbServerKind.MySql];
 
+  /// <summary>The vendors <c>all</c> leaves out, which run only when named. Db2 is one: its container beside those
+  /// of SQL Server and Oracle wants more memory than a developer's Docker has.</summary>
+  static readonly DbServerKind[] OnlyWhenNamed = [DbServerKind.Db2];
+
   public static bool IsEnabled(DbServerKind kind) {
     var setting = Environment.GetEnvironmentVariable(Variable);
     if (string.IsNullOrWhiteSpace(setting))
       return Default.Contains(kind);
     if (setting.Trim().Equals("all", StringComparison.OrdinalIgnoreCase))
-      return true;
+      return !OnlyWhenNamed.Contains(kind);
     return setting.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
       .Any(name => name.Equals(kind.ToString(), StringComparison.OrdinalIgnoreCase));
   }
 
   public static string WhyNot(DbServerKind kind) =>
-    $"{kind} is not in this run. Set {Variable}=all, or {Variable}={kind}, to include it.";
+    OnlyWhenNamed.Contains(kind)
+      ? $"{kind} is not in this run. Set {Variable}={kind} to include it; {Variable}=all leaves it out."
+      : $"{kind} is not in this run. Set {Variable}=all, or {Variable}={kind}, to include it.";
 }

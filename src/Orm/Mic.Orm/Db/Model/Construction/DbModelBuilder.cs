@@ -3,8 +3,6 @@ using Mic.Common;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
 using Mic.Orm.Model.Construction;
@@ -56,35 +54,11 @@ internal class DbModelBuilder {
     BuildTableFilters(context, dbModel);
     new ViewSourceBuilder(context, provider, dbModel).Build();
 
-    dbModel.EntityModelMapping = BuildMapping(dbModel);
 
     dbModel.BuildReport.Add(context.Diagnostics);
     dbModel.BuildReport.TableCount = dbModel.Tables.Count;
     dbModel.BuildReport.Elapsed = started.Elapsed;
     return dbModel;
-  }
-
-  /// <summary>Builds the entity-to-table and member-to-column mapping from the links this build made, with the
-  /// entity model as model A and the db model as model B.</summary>
-  private static ModelMappingDef BuildMapping(DbModel dbModel) {
-    var mapping = new ModelMappingDef {
-      ModelA = dbModel.EntityModel?.Name,
-      ModelB = dbModel.Name,
-    };
-
-    foreach (var table in dbModel.Tables) {
-      if (table.Entity is not { } entity)
-        continue;
-      var objectMap = new ObjectMappingDef(
-        new ModelObjectRef(entity.Schema?.Name, entity.Name),
-        new ModelObjectRef(table.Schema.Name, table.Name));
-      foreach (var column in table.Columns)
-        if (column.Member is { } member)
-          objectMap.Members.Add(new MemberMappingDef(member.Name, column.Name));
-      mapping.Objects.Add(objectMap);
-    }
-
-    return mapping;
   }
 
   /// <summary>Reports an error for every generated name longer than the server accepts.</summary>
@@ -422,7 +396,7 @@ internal class DbModelBuilder {
       else
         context.AddWarning(
           $"is an identity column, which {provider.ServerKind} cannot declare; the designation is dropped and the "
-          + "application must supply the value.", $"{member.Entity.Name}.{member.Name}");
+          + "application must supply the value.", location);
     }
     return column;
   }
@@ -517,12 +491,26 @@ internal class DbModelBuilder {
     if (flags.HasFlag(KeyFlags.Index) && indexType is DbIndexType.Default or DbIndexType.Spatial
         && key.MembersExpanded is [{ Member: { DataType: var pointType, IsNullable: var nullable } }]
         && pointType == typeof(GeoPoint)) {
-      if (nullable && provider.SqlDialect.SpatialIndexNeedsNotNull) {
+      if (nullable && provider.Supports(DbFeatures.SpatialIndexNeedsNotNullMySql)) {
         context.AddWarning($"is a spatial index over a nullable point, which {provider.ServerKind} does not allow; "
           + "no index is created.", location);
         return null;
       }
       indexType = provider.SpatialIndexType;
+    }
+
+    // An index over a vector is the server's vector index, of the member's metric.
+    var vectorMember = flags.HasFlag(KeyFlags.Index) && indexType == DbIndexType.Default
+        && key.MembersExpanded is [{ Member: { IsVector: true } indexed }]
+      ? indexed
+      : null;
+    if (vectorMember != null) {
+      if (provider.VectorIndexType == DbIndexType.Default) {
+        context.AddWarning($"is an index over a vector, and the ORM creates no vector index on {provider.ServerKind}; "
+          + "no index is created.", location);
+        return null;
+      }
+      indexType = provider.VectorIndexType;
     }
 
     if (indexType != DbIndexType.Default && !provider.SupportsIndexType(indexType)) {
@@ -536,6 +524,7 @@ internal class DbModelBuilder {
     var dbKey = new DbKeyInfo(keyName, table, flags) {
       EntityKey = key,
       IndexType = indexType == DbIndexType.Default ? provider.DefaultIndexType : indexType,
+      VectorMetric = vectorMember?.VectorMetric,
     };
 
     foreach (var km in key.MembersExpanded) {

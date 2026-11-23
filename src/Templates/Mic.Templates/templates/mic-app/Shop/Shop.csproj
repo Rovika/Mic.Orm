@@ -27,6 +27,14 @@
     <!--#if (SQLite) -->
     <PackageReference Include="Mic.Orm.Db.Sqlite" Version="MIC_VERSION" />
     <!--#endif -->
+    <!--#if (Db2) -->
+    <PackageReference Include="Mic.Orm.Db.Db2" Version="MIC_VERSION" />
+    <!-- IBM ships its driver as a package per operating system, so the provider carries none and the host
+         references the one of the system it is built on. -->
+    <PackageReference Include="Net.IBM.Data.Db2" Version="10.0.0.400" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <PackageReference Include="Net.IBM.Data.Db2-lnx" Version="10.0.0.400" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+    <PackageReference Include="Net.IBM.Data.Db2-osx" Version="10.0.0.400" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+    <!--#endif -->
   </ItemGroup>
 
   <ItemGroup>

@@ -422,6 +422,14 @@ public enum NamedOpType {
   /// <remarks>A server measures on its own figure of the Earth, a spheroid or a sphere, and the evaluator on a
   /// sphere; the figures agree within a fraction of a percent.</remarks>
   GeoDistance,
+
+  // ----- vectors -----------------------------------------------------------------------------------------------------
+
+  /// <summary>The distance between two vectors, smaller for a nearer one; the arguments are the two vectors.
+  /// </summary>
+  /// <remarks>The metric is the one the vector member among the arguments declares, which the model that writes the
+  /// statement knows. The operation is not evaluated in memory.</remarks>
+  VectorDistance,
 }
 
 /// <summary>Specifies what a full-text query's words mean, alike on every server.</summary>

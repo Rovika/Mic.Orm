@@ -1,4 +1,3 @@
-using Mic.Modeling.Db;
 using Mic.Orm.Model;
 
 namespace Mic.Orm.Db.Model;
@@ -46,6 +45,12 @@ public class DbKeyInfo : DbModelObject {
   /// <remarks>The value is concrete on both sides of a comparison: a model built from the entity model resolves an
   /// unstated method to the provider's default, and introspection reads back what the server reports.</remarks>
   public DbIndexType IndexType { get; set; }
+
+  /// <summary>Gets or sets the metric a vector index finds the nearest vectors by, or <see langword="null"/> for any
+  /// other index.</summary>
+  /// <remarks>An ordering by another metric is not served by the index, so a change of the metric is a rebuild.
+  /// </remarks>
+  public VectorMetric? VectorMetric { get; set; }
 
   /// <summary>Gets or sets the hash MIC stored alongside this index when it created it, as read back by introspection.
   /// </summary>

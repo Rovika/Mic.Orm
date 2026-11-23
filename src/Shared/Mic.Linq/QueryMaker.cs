@@ -79,7 +79,8 @@ public static class QueryMaker {
   /// <summary>Names the members of the query's rows to load together with the rows.</summary>
   /// <param name="query">The query.</param>
   /// <param name="paths">An array that contains the member paths of the query's result entity, such as
-  /// <c>"Category"</c> or <c>"Category.Products"</c>: a reference, a list, or a chain of them.</param>
+  /// <c>"Category"</c> or <c>"Category.Products"</c>: a reference, a list, a chain of them, or a member the host
+  /// loads on demand, alone or at the end of a chain.</param>
   /// <returns>A node that names the query and its includes.</returns>
   public static QueryNode Include(this QueryNode query, params string[] paths) {
     ArgumentNullException.ThrowIfNull(query);
@@ -229,6 +230,17 @@ public static class QueryMaker {
     ArgumentNullException.ThrowIfNull(point);
     ArgumentNullException.ThrowIfNull(other);
     return NamedOp(NamedOpType.GeoDistance, typeof(double), point, other);
+  }
+
+  /// <summary>Returns the distance between two vectors, by the metric the vector member among them declares.
+  /// </summary>
+  /// <param name="vector">The first vector: a member, a parameter or a constant.</param>
+  /// <param name="other">The second vector.</param>
+  /// <returns>A node whose value is the distance, smaller for a nearer vector.</returns>
+  public static QueryNode VectorDistance(this QueryNode vector, QueryNode other) {
+    ArgumentNullException.ThrowIfNull(vector);
+    ArgumentNullException.ThrowIfNull(other);
+    return NamedOp(NamedOpType.VectorDistance, typeof(double), vector, other);
   }
 
   /// <summary>Returns a named operation over its arguments.</summary>

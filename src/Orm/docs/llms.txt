@@ -2,7 +2,7 @@
 
 > A .NET 10 ORM in which an entity is a C# interface, the implementing class is emitted at startup, and the
 > database is derived from the model on every connect: no migrations, no entity classes. PostgreSQL, SQL Server,
-> MySQL, Oracle and SQLite from one model. Not Entity Framework: no DbContext, no DbSet, no data annotations.
+> MySQL, Oracle, SQLite and Db2 from one model. Not Entity Framework: no DbContext, no DbSet, no data annotations.
 
 ## Guide
 
@@ -41,6 +41,8 @@
 - [JSON](guide/json.html): `[Json]` members, typed documents, `[FromJson]` columns.
 - [Full-text search](guide/full-text.html): the full-text index, `FullText.Matches` and `FullText.Rank`.
 - [Geographic points](guide/geo-points.html): `GeoPoint` members, the spatial index, `GeoFunctions.Distance`.
+- [Vector search](guide/vector-search.html): `[Vector]` members for embeddings, `VectorFunctions.Distance`, the
+  vector index, on PostgreSQL with pgvector and SQL Server 2025.
 - [Data cache](guide/data-cache.html): cached entities, the queries answered in memory.
 - [QueryMaker](guide/querymaker.html): a query composed at run time from names.
 - [Direct SQL](guide/direct-sql.html): SQL text run through the session.
@@ -48,6 +50,8 @@
 - [Smart loading](guide/smart-loading.html): the smart lazy load, where `Include` fits and where it does not,
   the three hooks (a reference, a list member, a query over an `IQueryable<T>` member), the bounds,
   `DisableSmartLoad`.
+- [On-demand members](guide/on-demand-members.html): `[OnDemand]` on a large column member, left out of every
+  read of its entity and loaded on the first read; `Include` and `LoadMemberAsync` to load it ahead of the read.
 - [Guid generation](guide/guid-generation.html): Guid keys made in the application and ordered by time, the
   versions, the time read out of a key with `EntityHelper.GetTimestamp`, SQL Server's layout, `GuidScheme`.
 - [Logging](guide/logging.html): the operation's log and its modes, the file log for development, `ILogListener`
@@ -64,11 +68,22 @@
 - [Soft delete extension](guide/soft-delete.html): `ISoftDeleteEntity`, `DeletedMemberName` and `[DeletedMark]` for
   an existing database, a delete that writes the mark.
 
+## Servers and hosting
+
+- [Database server specifics](guide/servers.html): what differs between the servers: the Guid scheme, unlimited
+  text and binary on MySQL, binary members on Oracle, an `int` key on SQLite, the SQLite driver.
+- [MIC ORM on an existing Db2 database](guide/existing-db2-database.html): the packages, the model generated from
+  the database, the connect under `DbUpgradeMode.Never`, reading and updating, the limits on Db2.
+- [Array columns on PostgreSQL](guide/postgres-arrays.html): a member typed `T[]` or `List<T>` as an array
+  column, the item types, reading and writing, queries over the items, the other servers.
+- [Setup in ASP.NET Core](guide/aspnet-core.html): the application a singleton, an `OperationContext` per
+  request as a scoped service.
+
 ## Reference
 
-- [How to…](guide/how-to.html): quick answers, one question per heading.
 - [Generating entities from a database](guide/tool-entities.html): `mic-db entities`, database first.
 - [Generating the upgrade script](guide/tool-upgrade.html): `mic-db upgrade`, the DDL for review.
+- [How to…](guide/how-to.html): quick answers, one question per heading.
 - [Running tests](guide/running-tests.html): the suites, the servers in Docker, `MIC_TEST_VENDORS`, run times,
   the SQL log.
 - [Advanced example - Beauty Shop](guide/beauty-shop.html): the multi-tenant example application and its source.

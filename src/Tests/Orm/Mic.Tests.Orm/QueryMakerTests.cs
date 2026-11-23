@@ -3,7 +3,6 @@ using Mic.Linq;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Db;
 using BeautyShop;
 

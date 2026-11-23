@@ -141,6 +141,18 @@ public enum AutoType {
   Sequence,
 }
 
+/// <summary>Specifies the metric the distance between two vectors is measured by.</summary>
+public enum VectorMetric {
+  /// <summary>One minus the cosine of the angle between the vectors: 0 for the same direction, 2 for the opposite.
+  /// </summary>
+  Cosine,
+  /// <summary>The length of the straight line between the vectors.</summary>
+  Euclidean,
+  /// <summary>The dot product of the vectors, negated, so that a smaller value is a nearer vector as with the other
+  /// metrics.</summary>
+  DotProduct,
+}
+
 /// <summary>Specifies the options of <see cref="SizeAttribute"/>.</summary>
 [Flags]
 public enum SizeOptions {

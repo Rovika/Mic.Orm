@@ -26,8 +26,6 @@ public class SqliteSqlDialect : SqlDialect {
     // insert, and SqliteTypeRegistry makes the type say so. AUTOINCREMENT is not needed; it only promises never to
     // reuse a deleted row's rowid, at the cost of a second table and a write per insert.
     Identity = "";
-    // The other side of it: a plain int key is declared the same way and is read back as an identity.
-    IdentityIsImplied = true;
 
     // Since 3.35.
     InsertReturningIdentity = "INSERT INTO {0} ({1})\n  VALUES ({2})\n  RETURNING {3}";

@@ -37,10 +37,11 @@ servers' defaults, so a server already installed on the machine keeps its port.
 
 | vendor | container | port | started by |
 |---|---|---|---|
-| PostgreSQL | `postgis/postgis:17-3.5` | 5433 | `docker compose up -d` |
+| PostgreSQL | built from `docker/postgres/Dockerfile` | 5433 | `docker compose up -d` |
 | MySQL | `mysql:8.4` | 3307 | `docker compose up -d` |
 | SQL Server | built from `docker/sqlserver/Dockerfile` | 1434 | `--profile heavy` |
 | Oracle | `gvenzl/oracle-free:23` | 1522 | `--profile heavy` |
+| Db2 | `icr.io/db2_community/db2:12.1.5.0` | 50000 | `--profile db2` |
 | SQLite | none, a file under the temp folder | | |
 
 The default set, PostgreSQL and MySQL, starts in a few seconds:
@@ -63,6 +64,17 @@ Stop them when the run is over; the two heavy containers idle at a noticeable sh
 docker compose --profile heavy down
 ```
 
+Db2 is behind a profile of its own and is not in `all`: its container beside SQL Server's and Oracle's wants more
+memory than a developer's Docker usually has. Starting it accepts IBM's licence for Db2 Community Edition, which
+the compose file states with `LICENSE: accept`. The first start creates the instance and two databases and takes
+eight to nine minutes; a later start takes under a minute, so the container is stopped and kept, not removed:
+
+```bash
+docker compose --profile db2 up -d --wait db2
+MIC_TEST_VENDORS=db2 dotnet test src/MicOrm.slnx
+docker compose stop db2
+```
+
 MySQL, SQL Server and Oracle keep nothing between runs: every `up` is a clean server. PostgreSQL keeps its data in
 the named volume `mic-test-pgdata`, because the same container also hosts the `BeautyShop` sample database, which
 is a thing a person opens. `docker compose down -v` discards it too; the sample is rebuilt by
@@ -75,11 +87,12 @@ The environment variable `MIC_TEST_VENDORS` says which vendors a run covers:
 | value | vendors |
 |---|---|
 | unset | SQLite, PostgreSQL, MySQL: the ones that cost nothing to reach |
-| `all` | the five |
+| `all` | the five: SQLite, PostgreSQL, MySQL, SQL Server and Oracle |
+| `db2` | Db2, which runs only when named |
 | `postgres,sqlite` | a chosen few, comma-separated |
 
-The names are the values of `DbServerKind`: `Postgres`, `MySql`, `SQLite`, `MsSql`, `Oracle`, matched without
-regard to case. SQL Server is `MsSql`. A name that matches nothing enables nothing, and the run still reports
+The names are the values of `DbServerKind`: `Postgres`, `MySql`, `SQLite`, `MsSql`, `Oracle`, `Db2`, matched
+without regard to case. SQL Server is `MsSql`. A name that matches nothing enables nothing, and the run still reports
 Passed, so check the skipped count after setting the variable.
 
 A vendor not in the run is skipped: its tests end `Inconclusive`, not failed. A vendor in the run that cannot be
@@ -196,6 +209,7 @@ makes a run somewhat faster.
 | MySQL | a database, since a MySQL schema is a database |
 | SQL Server | a schema in `mic_test` |
 | Oracle | a user with no password |
+| Db2 | a schema in `MICTEST` |
 | SQLite | a file under `{temp}/mic_tests` |
 
 The DDL suite is about schema churn, so each of its tests takes a database of its own and drops it at the end. The

@@ -1,5 +1,4 @@
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
 
@@ -11,12 +10,22 @@ namespace Mic.Orm.Db.Postgres;
 /// being added to the table.</remarks>
 public class PostgresSqlDialect : SqlDialect {
   public PostgresSqlDialect() {
+    // The items of an array column, one row each, typed as the array's item type.
+    ArrayRowsSource = "unnest({0}) AS {1}({2})";
     // No virtual generated columns before 18: a computed column is stored.
     ComputedStorage = ComputedStorage.Stored;
     // A point is PostGIS geography, SRID 4326 by default; the extension has to be in the database first.
     GeoPointRead = "ST_AsBinary({0})";
     GeoPointWrite = "ST_GeogFromWKB({0})";
     GeoPointPrerequisite = "CREATE EXTENSION IF NOT EXISTS postgis";
+    // pgvector casts its vector to an array of floats and back, and Npgsql binds and reads such an array itself.
+    VectorRead = "{0}::real[]";
+    VectorWrite = "{0}::vector";
+    VectorPrerequisite = "CREATE EXTENSION IF NOT EXISTS vector";
+    // The operators, not the functions of the same result: an index over a vector serves an ordering by its operator.
+    VectorCosineDistance = "({0} <=> {1})";
+    VectorEuclideanDistance = "({0} <-> {1})";
+    VectorDotProductDistance = "({0} <#> {1})";
     // Metres on the spheroid, since both sides are geography.
     FunctionTemplates[NamedOpType.GeoDistance] = "ST_Distance({0}, {1})";
     // The server regenerates a view's text and drops its comments, so the hash is a comment on the view.
@@ -98,8 +107,19 @@ public class PostgresSqlDialect : SqlDialect {
       DbIndexType.Brin => "brin",
       // A full-text index is a GIN over the text-search vector of the columns.
       DbIndexType.FullText => "gin",
+      DbIndexType.Hnsw => "hnsw",
       _ => "btree",
     });
+
+  /// <summary>Builds the column of a vector index with the operator class of the index's metric, which is how
+  /// pgvector is told the metric.</summary>
+  /// <inheritdoc/>
+  public override string? BuildVectorIndexColumns(DbKeyInfo index) =>
+    index.Columns[0].Column.QuotedName + " " + index.VectorMetric switch {
+      VectorMetric.Euclidean => "vector_l2_ops",
+      VectorMetric.DotProduct => "vector_ip_ops",
+      _ => "vector_cosine_ops",
+    };
 
   /// <summary>Builds a SQL function returning <c>TABLE(…)</c> over the table's columns, replaced in place, its body
   /// in dollar quotes.</summary>

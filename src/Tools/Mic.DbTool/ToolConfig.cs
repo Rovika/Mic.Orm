@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Mic.Modeling.Db;
 using Mic.Orm.Db;
 
 namespace Mic.DbTool;

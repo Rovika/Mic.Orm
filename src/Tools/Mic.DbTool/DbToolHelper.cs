@@ -1,11 +1,10 @@
 using System.Text;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Upgrades;
 using Mic.Orm.DbInfo;
+using Mic.Orm.Logging;
 
 namespace Mic.DbTool;
 

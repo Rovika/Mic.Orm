@@ -1,5 +1,4 @@
 using System.Text;
-using Mic.Modeling;
 using Mic.Orm;
 using Mic.Orm.Logging;
 using Mic.Orm.Runtime;
@@ -223,17 +222,6 @@ public class LoggingTests {
     // ----- and an error still is, so LogMode.OnError is untouched -----------------------------------------------------
     Assert.IsTrue(new MessageLogEntry(context.LogSource, context.Now, "bad", Severity.Error).IsError);
     Assert.IsTrue(new ErrorLogEntry(context.LogSource, context.Now, "threw", new InvalidOperationException()).IsError);
-
-    // ----- the flat form keeps all four facts, with the text already rendered ------------------------------------------
-    var item = warning.ToLogItem();
-    Assert.AreEqual(Severity.Warning, item.Severity);
-    Assert.AreEqual(warning.Time, item.Time);
-    Assert.AreEqual("Person.Name", item.Location);
-    StringAssert.Contains(item.Text, "size 50 → 80");
-    Assert.IsFalse(item.IsError);
-
-    // An entry about nothing in particular has no location, which is the ordinary case.
-    Assert.IsNull(new MessageLogEntry(context.LogSource, context.Now, "plain").ToLogItem().Location);
   }
 
   [TestMethod]

@@ -18,7 +18,8 @@ public class EntityMemberInfo : ILinqEntityMember {
 
   ulong _loadCacheKey, _loadManyOwnersCacheKey;
 
-  /// <summary>Gets the key the query cache holds the load of one owner's rows of a list member under.</summary>
+  /// <summary>Gets the key the query cache holds the member's load under: one owner's rows of a list member, or an
+  /// on-demand member of the records that lack it.</summary>
   /// <remarks>A fixed key rather than a hash of the query, since the model fixes the shape. See
   /// <see cref="EntityKeyInfo.SelectByKeyCacheKey"/>.</remarks>
   public ulong LoadCacheKey => _loadCacheKey != 0 ? _loadCacheKey
@@ -144,6 +145,19 @@ public class EntityMemberInfo : ILinqEntityMember {
   public bool IsPrimaryKey => MemberFlags.HasFlag(MemberFlags.PrimaryKey);
   public bool IsDbGenerated => MemberFlags.HasFlag(MemberFlags.DbGenerated);
   public bool IsJson => MemberFlags.HasFlag(MemberFlags.Json);
+  public bool IsVector => MemberFlags.HasFlag(MemberFlags.Vector);
+  public bool IsOnDemand => MemberFlags.HasFlag(MemberFlags.OnDemand);
+
+  /// <summary>Gets or sets the metric a distance over a vector member is measured by, from <c>[Vector]</c>.</summary>
+  /// <value>One of the enumeration values that specifies the metric. It has a meaning for a member that
+  /// <see cref="IsVector"/> only.</value>
+  public VectorMetric VectorMetric { get; set; }
+
+  /// <summary>Gets or sets the type of an item, for a member that is an array or a <see cref="List{T}"/> of scalars
+  /// held in an array column; <see langword="null"/> for any other member.</summary>
+  /// <remarks>A <c>[Json]</c> member of such a type is a document and has none; a <c>[Vector]</c> member is a
+  /// vector and has none.</remarks>
+  public Type? ArrayItemType { get; set; }
 
   object? _defaultValue;
 

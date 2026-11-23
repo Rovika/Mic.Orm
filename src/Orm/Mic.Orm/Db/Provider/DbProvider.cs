@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Model.Upgrades;
@@ -82,6 +81,10 @@ public abstract class DbProvider {
   /// means nothing; the default where the server has no spatial index.</summary>
   public virtual DbIndexType SpatialIndexType => DbIndexType.Default;
 
+  /// <summary>Gets the access method an index over a vector takes, since an ordered index over a vector finds no
+  /// nearest one; the default where the server has no vector index.</summary>
+  public virtual DbIndexType VectorIndexType => DbIndexType.Default;
+
   /// <summary>Decides whether the server can be asked for an access method.</summary>
   /// <param name="type">One of the enumeration values that specifies the access method.</param>
   /// <returns><see langword="true"/> if the method is the default or one the server declares; otherwise,
@@ -142,17 +145,31 @@ public abstract class DbProvider {
     _ => value,
   };
 
+  /// <summary>Serializes the rows of a parameter as the one text value they are bound as, JSON by default, in the
+  /// form the dialect's <see cref="SqlDialect.JsonRowsSource"/> reads back.</summary>
+  /// <param name="columns">The columns of a row, in order.</param>
+  /// <param name="rows">The rows, each an array with one value per column.</param>
+  /// <returns>The text.</returns>
+  /// <remarks>A provider whose server spreads no JSON array into rows overrides this together with the dialect's
+  /// spelling, as Db2's does with XML.</remarks>
+  public virtual string SerializeRows(IReadOnlyList<JsonRowsColumn> columns, IEnumerable<object?[]> rows) =>
+    Sql.JsonRowsHelper.Serialize(this, columns, rows);
+
   /// <summary>Converts a value as it came out of a reader into the member's type: a Guid from text or bytes, a
   /// Boolean from a number, an enum from its integer, and an object from JSON text.</summary>
   /// <param name="value">The value the reader returned.</param>
   /// <param name="targetType">The type the member has.</param>
   /// <returns>The converted value.</returns>
-  public object? ConvertReadValue(object? value, Type targetType) {
+  public virtual object? ConvertReadValue(object? value, Type targetType) {
     if (value is string jsonText) {
       var wanted = Nullable.GetUnderlyingType(targetType) ?? targetType;
       if (!wanted.IsScalarType())
         return Runtime.JsonMemberHelper.Deserialize(jsonText, wanted);
     }
+    // An array column comes back as an array; a member declared a List takes a List of the items.
+    if (value is Array and not byte[] && targetType.IsGenericType
+        && targetType.GetGenericTypeDefinition() == typeof(List<>))
+      return Activator.CreateInstance(targetType, value);
     return ConvertHelper.ConvertValue(value, targetType);
   }
 

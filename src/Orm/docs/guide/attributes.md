@@ -44,6 +44,7 @@ database name of the key or index.
 | `[Utc]` | property | A `DateTime` kept in UTC; assigned values are converted. | `[Utc] DateTime PlacedOn { get; set; }` |
 | `[DateOnly]` | property | A `DateTime` member stored as a date. A `DateOnly` member needs no attribute. | `[DateOnly] DateTime BirthDate { get; set; }` |
 | `[Json]` | property | A JSON column holding an object of the member's type. `Discriminator` names a member holding the type discriminator. | `[Json] Dimensions? Size { get; set; }` |
+| `[Vector]` | property | A vector column of the stated dimensions, on a `float[]` member. `Metric` names the metric of a distance over it. See [Vector search](vector-search.md). | `[Vector(1536)] float[] Embedding { get; set; }` |
 | `[NoColumn]` | property | No column; the member lives in memory only. | `[NoColumn] string? Scratch { get; set; }` |
 | `[AsIs]` | property | An upgrade never alters the column's type or definition. | `[AsIs] string? Legacy { get; set; }` |
 
@@ -85,6 +86,7 @@ database name of the key or index.
 | `[NoUpdate]` | property | Set at creation, never updated. | `[NoUpdate] DateTime CreatedOn { get; set; }` |
 | `[ReadOnly]` | property | Never assigned by the application. `System.ComponentModel.ReadOnlyAttribute` has the same name; qualify one of them. | `[ReadOnly] string Code { get; set; }` |
 | `[Secret]` | property | Written, never read back in a `SELECT`. Usable in a `WHERE`. | `[Secret] string PasswordHash { get; set; }` |
+| `[OnDemand]` | property | Left out of every read of the entity and loaded when first read; for a large column. See [On-demand members](on-demand-members.md). | `[OnDemand, Unlimited] string Body { get; set; }` |
 
 ## Not attributes
 

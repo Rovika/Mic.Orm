@@ -1,6 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 using Mic.Orm.Model;
 using Mic.Orm.Model.Construction;
 
@@ -269,6 +269,13 @@ public partial class UnlimitedAttribute {
   }
 }
 
+public partial class OnDemandAttribute {
+  internal override void ApplyToMember(BuilderContext context, EntityMemberInfo member) {
+    if (context.Phase == AttributePhase.Middle)
+      member.MemberFlags |= MemberFlags.OnDemand;
+  }
+}
+
 public partial class HashForAttribute {
   internal override void ApplyToMember(BuilderContext context, EntityMemberInfo member) {
     // Late, so the member it names has had its own attributes applied.
@@ -293,6 +300,33 @@ public partial class HashForAttribute {
       return;
     }
     hashed.HashMember = member;
+  }
+}
+
+public partial class VectorAttribute {
+  internal override void ApplyToMember(BuilderContext context, EntityMemberInfo member) {
+    if (context.Phase != AttributePhase.Middle)
+      return;
+    var location = SizeAttribute.GetLocation(member);
+    if (member.DataType != typeof(float[])) {
+      context.AddError($"[Vector] is on a member of type '{member.DataType.Name}'; a vector is a float[].", location);
+      return;
+    }
+    if (member.Property?.GetCustomAttribute<JsonAttribute>() != null) {
+      context.AddError("has [Vector] and [Json]; a member is a vector or a JSON document, not both.", location);
+      return;
+    }
+    if (Dimensions <= 0) {
+      context.AddError($"[Vector({Dimensions})] states no dimensions; the number is one or more.", location);
+      return;
+    }
+    if (member.Size != 0) {
+      context.AddError("has a size beside [Vector], which states the member's dimensions itself.", location);
+      return;
+    }
+    member.MemberFlags |= MemberFlags.Vector;
+    member.Size = Dimensions;
+    member.VectorMetric = Metric;
   }
 }
 

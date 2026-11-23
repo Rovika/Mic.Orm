@@ -1,12 +1,11 @@
 using System.Reflection;
 using Mic.DbTool;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model.Upgrades;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.DbInfo;
+using Mic.Orm.Logging;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -35,7 +34,7 @@ public abstract partial class DdlTests {
   public void Tool_LoadsEveryProviderFromAFolder() {
     // The command line names a server kind and a folder; the provider is constructed with its defaults.
     DbServerKind[] kinds = [DbServerKind.Postgres, DbServerKind.MySql, DbServerKind.MsSql, DbServerKind.Oracle,
-      DbServerKind.SQLite];
+      DbServerKind.SQLite, DbServerKind.Db2];
     foreach (var kind in kinds)
       Assert.AreEqual(kind, ProviderLoader.Load(kind, AppContext.BaseDirectory).ServerKind);
   }
@@ -246,8 +245,10 @@ public abstract partial class DdlTests {
     AssertHasMember(source, "[PrimaryKey, Identity]", "int Id { get; set; }");
     AssertHasMember(source, null, "IToolUser? User { get; set; }");
     // A JSON column, whether the server's JSON type or text under the check MIC made for it: the attribute alone,
-    // and the check neither a comment nor a warning.
-    AssertHasMember(source, "[Json]", "string? Payload { get; set; }");
+    // and the check neither a comment nor a warning. On Db2, which has neither the type nor a test for the check,
+    // the column is the unlimited text it is declared as.
+    AssertHasMember(source, Db.Provider.ServerKind == DbServerKind.Db2 ? "[Unlimited]" : "[Json]",
+      "string? Payload { get; set; }");
     Assert.IsFalse(source.Contains("IsJson"), source);
     // A binary that says its size: the size where the server has a bounded binary type, unlimited where it has not.
     var hasBoundedBinary = Db.Provider.TypeRegistry.FindSpecial(DbSpecialType.Binary) != null;
@@ -291,7 +292,9 @@ public abstract partial class DdlTests {
     AssertHasMember(pinnedSource, $"[EntityRef(KeyColumns = \"Org_Id\"{foreignKeyName}), Index(Name = \"IX_ToolUser_Org\")]",
       "IToolOrg Org { get; set; }");
     AssertHasMember(pinnedSource, "[Column(\"Rate\", Precision = 9, Scale = 2)]", "decimal Rate { get; set; }");
-    AssertHasMember(pinnedSource, "[Json, Column(\"Payload\")]", "string? Payload { get; set; }");
+    AssertHasMember(pinnedSource,
+      Db.Provider.ServerKind == DbServerKind.Db2 ? "[Unlimited, Column(\"Payload\")]" : "[Json, Column(\"Payload\")]",
+      "string? Payload { get; set; }");
     AssertHasLine(pinnedSource, "rename any identifier freely");
     AssertHasLine(pinnedSource, "[Entity, View(\"ToolRanked\")]");
     var pinnedPlan = await DbToolHelper.PlanUpgradeAsync(CompileAndConstruct(pinnedSource, "PinnedApp"), Db.Settings);
@@ -307,6 +310,72 @@ public abstract partial class DdlTests {
       "Guid? UserId { get; set; }   // references ToolUser, which is outside the selection");
     StringAssert.Contains(subsetSource, "1 foreign key(s) point outside the selection");
     Assert.IsFalse(subsetSource.Contains("IToolUser"), "the entity left out is not mentioned as a type");
+
+    // ----- 5. a table with no primary key: a unique key over required columns stands in, or the table is left out --
+    await Db.ExecuteAsync($"CREATE TABLE {Db.GetTableRef("ToolByCode")} ({Db.Quote("Code")} int NOT NULL, "
+      + $"{Db.Quote("Label")} varchar(20))");
+    await Db.ExecuteAsync(string.Format(Db.Provider.SqlDialect.CreateUniqueIndex, Db.Quote("ToolByCode_code"),
+      Db.GetTableRef("ToolByCode"), Db.Quote("Code"), Db.GetTableRef("ToolByCode_code"), "", ""));
+    await Db.ExecuteAsync($"CREATE TABLE {Db.GetTableRef("ToolKeyless")} ({Db.Quote("Code")} int NOT NULL)");
+    var keyless = new EntitySourceWriter(await DbToolHelper.LoadModelAsync(Db.Settings, schemas), Db.Settings,
+      new EntitySourceOptions {
+        Namespace = "Tool.Keyless", AppClassName = "ToolKeylessApp", Tables = ["ToolByCode", "ToolKeyless"],
+        Lists = false,
+      });
+    var keylessSource = keyless.Write();
+    AssertHasLine(keylessSource, "[PrimaryKey(Name = \"ToolByCode_code\")");
+    Assert.IsFalse(keylessSource.Contains("ToolKeyless\""), "the table with no key at all is not written");
+    Assert.IsTrue(keyless.Warnings.Any(w => w.StartsWith("ToolByCode:") && w.Contains("as the primary key")),
+      string.Join(Environment.NewLine, keyless.Warnings));
+    Assert.IsTrue(keyless.Warnings.Any(w => w.StartsWith("ToolKeyless:") && w.Contains("not written")),
+      string.Join(Environment.NewLine, keyless.Warnings));
+    // The model builds: the stand-in is a primary key the entity model accepts.
+    var keylessApp = CompileAndConstruct(keylessSource, "ToolKeylessApp");
+    Assert.IsTrue(keylessApp.Model!.Entities.Any(e => e.Name == "ToolByCode"));
+
+    // PostgreSQL's array columns: an array member each, and a model that builds with them.
+    if (Db.Provider.ServerKind == DbServerKind.Postgres) {
+      await Db.ExecuteAsync($"CREATE TABLE {Db.GetTableRef("ToolArrays")} ({Db.Quote("Id")} int NOT NULL PRIMARY KEY, "
+        + $"{Db.Quote("Counts")} integer[] NOT NULL, {Db.Quote("Tags")} text[])");
+      var arrays = new EntitySourceWriter(await DbToolHelper.LoadModelAsync(Db.Settings, schemas), Db.Settings,
+        new EntitySourceOptions {
+          Namespace = "Tool.Arrays", AppClassName = "ToolArraysApp", Tables = ["ToolArrays"], Lists = false,
+        });
+      var arraysSource = arrays.Write();
+      AssertHasLine(arraysSource, "  int[] Counts { get; set; }");
+      AssertHasLine(arraysSource, "  string[]? Tags { get; set; }");
+      Assert.AreEqual(0, arrays.Warnings.Count, string.Join(Environment.NewLine, arrays.Warnings));
+      var arraysApp = CompileAndConstruct(arraysSource, "ToolArraysApp");
+      var arraysEntity = arraysApp.Model!.Entities.Single(e => e.Name == "ToolArrays");
+      Assert.AreEqual(typeof(int), arraysEntity.GetMember("Counts").ArrayItemType);
+
+      // pgvector's columns: a [Vector] member each, the metric of the index over one on its attribute, and the
+      // index with no access method stated.
+      await Db.ExecuteAsync("CREATE EXTENSION IF NOT EXISTS vector");
+      await Db.ExecuteAsync($"CREATE TABLE {Db.GetTableRef("ToolVectors")} ({Db.Quote("Id")} int NOT NULL PRIMARY KEY, "
+        + $"{Db.Quote("Embedding")} vector(3) NOT NULL, {Db.Quote("Position")} vector(4), {Db.Quote("Loose")} vector)");
+      await Db.ExecuteAsync($"CREATE INDEX {Db.Quote("ToolVectors_Embedding")} ON {Db.GetTableRef("ToolVectors")} "
+        + $"USING hnsw ({Db.Quote("Embedding")} vector_cosine_ops)");
+      await Db.ExecuteAsync($"CREATE INDEX {Db.Quote("ToolVectors_Position")} ON {Db.GetTableRef("ToolVectors")} "
+        + $"USING hnsw ({Db.Quote("Position")} vector_l2_ops)");
+      var vectors = new EntitySourceWriter(await DbToolHelper.LoadModelAsync(Db.Settings, schemas), Db.Settings,
+        new EntitySourceOptions {
+          Namespace = "Tool.Vectors", AppClassName = "ToolVectorsApp", Tables = ["ToolVectors"], Lists = false,
+          AddDbObjectsNames = false,
+        });
+      var vectorsSource = vectors.Write();
+      AssertHasLine(vectorsSource, "  [Vector(3), Index]");
+      AssertHasLine(vectorsSource, "  float[] Embedding { get; set; }");
+      AssertHasLine(vectorsSource, "  [Vector(4, Metric = VectorMetric.Euclidean), Index]");
+      AssertHasLine(vectorsSource, "  float[]? Position { get; set; }");
+      Assert.IsFalse(vectorsSource.Contains("Loose {"), "a vector with no dimensions is not written");
+      Assert.IsTrue(vectors.Warnings.Single().Contains("Loose: it is a vector with no dimensions"),
+        string.Join(Environment.NewLine, vectors.Warnings));
+      var vectorsEntity = CompileAndConstruct(vectorsSource, "ToolVectorsApp").Model!.Entities
+        .Single(e => e.Name == "ToolVectors");
+      Assert.IsTrue(vectorsEntity.GetMember("Embedding").IsVector);
+      Assert.AreEqual(VectorMetric.Euclidean, vectorsEntity.GetMember("Position").VectorMetric);
+    }
     if (!hasCheck) {
       // SQLite makes a check with its table; the comment and the offered declaration are the same as elsewhere.
       await Db.ExecuteAsync($"CREATE TABLE {Db.GetTableRef("ToolNote")} ({Db.Quote("Id")} int NOT NULL PRIMARY KEY, "
@@ -320,7 +389,7 @@ public abstract partial class DdlTests {
       return;
     }
 
-    // ----- 5. the offered declaration, uncommented: it compiles, and its condition is SQL the server takes --------
+    // ----- 6. the offered declaration, uncommented: it compiles, and its condition is SQL the server takes --------
     var declared = CompileAndConstruct(source.Replace(checkLine, checkLine[3..]), "ToolTestApp");
     var declaredPlan = await DbToolHelper.PlanUpgradeAsync(declared, Db.Settings);
     Assert.IsFalse(declaredPlan.HasErrors, declaredPlan.Report());
@@ -328,7 +397,7 @@ public abstract partial class DdlTests {
     Assert.AreEqual(DbDiffKind.Add, added.Change!.DiffKind, "MIC's constraint beside the one made by hand");
     await Db.ExecuteAsync(added.Text);
 
-    // ----- 6. a check under MIC's own name, and one whose condition holds braces in quoted text -------------------
+    // ----- 7. a check under MIC's own name, and one whose condition holds braces in quoted text -------------------
     var log = Db.GetTableRef("ToolLog");
     await Db.ExecuteAsync($"ALTER TABLE {log} ADD CONSTRAINT {Db.Quote("CK_ToolLog_Text_0a1b2c3d")} "
       + $"CHECK ({Db.Quote("Text")} <> 'none')");

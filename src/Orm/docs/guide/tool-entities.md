@@ -8,7 +8,7 @@ module and the application class that register them. This is the database-first 
 * An application is moved to MIC ORM and its database exists already.
 * A model is needed for a database that another system owns.
 * A legacy schema is to be read as entities and then renamed into readable names without changing the
-  database.
+  database. [MIC ORM on an existing Db2 database](existing-db2-database.md) goes through such a case.
 
 ## Install
 
@@ -43,7 +43,7 @@ time (`providerPath`): the output folder of any project that references the prov
 
 | Key | Meaning | Default |
 |---|---|---|
-| `provider` | `Postgres`, `MySql`, `MsSql`, `Oracle` or `SQLite`. | required |
+| `provider` | `Postgres`, `MySql`, `MsSql`, `Oracle`, `SQLite` or `Db2`. | required |
 | `connectionString` | The connection string, or `env:NAME`, or `file:path`. | required |
 | `providerPath` | The folder the provider assembly and driver are loaded from. | required |
 | `schemas` | The schemas read. | every schema except the system ones |
@@ -106,10 +106,18 @@ Rules of the generated code:
 
 * Names become PascalCase: `order_line` is `IOrderLine`, `created_on` is `CreatedOn`.
 * The primary key's members come first; then the database's column order.
+* A table with no primary key is written with a unique key standing in for it, where the table has one whose
+  columns are all required: the key of fewest columns, written as `[PrimaryKey]` under its own name. A table
+  with no such key is not written. A warning says which of the two happened.
+* A foreign key that points from a key to that same key is not written; its columns are plain members.
 * A nullable column is a nullable member.
 * Text and binary columns carry `[Size(n)]` or `[Unlimited]`; decimals carry precision and scale; a column of
   a type MIC would not choose carries `DbTypeSpec`; a default carries `Default`.
 * An identity column is `[Identity]`; a row-version column `[RowVersion]`.
+* A PostgreSQL array column is an array member, `int[]` for `integer[]`. See
+  [Array columns on PostgreSQL](postgres-arrays.md).
+* A pgvector column is a `float[]` member with `[Vector(n)]`, and the HNSW index over it `[Index]`, with the
+  index's metric on `[Vector]`. See [Vector search](vector-search.md).
 * A column of the server's JSON type is a `string` member with `[Json]`, which holds the document as text. So
   is an unlimited text column under the check MIC makes for a JSON member where the server has no JSON type,
   `CK_Table_MemberIsJson_` and eight hex digits; that check is not written as a comment. Replace `string` with

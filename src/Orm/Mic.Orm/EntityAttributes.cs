@@ -1,4 +1,4 @@
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 using Mic.Orm.Model;
 using Mic.Orm.Model.Construction;
 
@@ -314,6 +314,13 @@ public partial class SizeAttribute : EntityModelAttributeBase {
 /// <summary>Specifies unlimited-length text or binary, such as <c>nvarchar(max)</c> and its equivalents.</summary>
 public partial class UnlimitedAttribute : EntityModelAttributeBase { }
 
+/// <summary>Specifies that a member's column is left out of a read of the entity and loaded when the member is asked
+/// for.</summary>
+/// <remarks>For a column that is large and seldom read: a document's text, a picture, an embedding. A query that
+/// names the member reads its column as any other. The member is a column member outside the primary key, the
+/// unique keys and the row version, of an entity that has a primary key and is not cached.</remarks>
+public partial class OnDemandAttribute : EntityModelAttributeBase { }
+
 /// <summary>Specifies a JSON column: the member's value is an object of the declared type, serialized to JSON on its
 /// way to the server and read back from it.</summary>
 /// <remarks>The column is the server's JSON type where it has one. The declared type is the base type of what the
@@ -327,6 +334,28 @@ public partial class JsonAttribute : EntityModelAttributeBase {
   /// <summary>Gets or sets the member of the same entity whose value says which of the derived types the document is,
   /// as one of the discriminators the base type's <c>[JsonDerivedType]</c> attributes name.</summary>
   public string? Discriminator { get; set; }
+}
+
+/// <summary>Specifies a vector column: the member, a <c>float[]</c>, is held in the server's vector type.</summary>
+/// <remarks>A value saved has to have the number of items the attribute states. A server with no vector type
+/// reports the member as an error of the model. Without the attribute a <c>float[]</c> member is an array column.
+/// </remarks>
+public partial class VectorAttribute : EntityModelAttributeBase {
+  /// <summary>Initializes a new instance of the <see cref="VectorAttribute"/> class with a number of dimensions.
+  /// </summary>
+  /// <param name="dimensions">The number of items in every value of the member.</param>
+  public VectorAttribute(int dimensions) {
+    Dimensions = dimensions;
+  }
+
+  /// <summary>Gets the number of items in every value of the member.</summary>
+  public int Dimensions { get; }
+
+  /// <summary>Gets or sets the metric the distance between two values of the member is measured by.</summary>
+  /// <value>One of the enumeration values that specifies the metric. The default is
+  /// <see cref="VectorMetric.Cosine"/>.</value>
+  /// <remarks>It is the metric of <c>VectorFunctions.Distance</c> over the member in a query.</remarks>
+  public VectorMetric Metric { get; set; }
 }
 
 /// <summary>Specifies that a member is nullable.</summary>
@@ -455,5 +484,6 @@ public partial class ValidatorAttribute : EntityModelAttributeBase {
 public partial class BypassAuthorizationAttribute : EntityModelAttributeBase { }
 
 // Vita attributes not carried over: TransactionId, PropagateUpdatedOn, DoNotTrack, DiscardOnAbort (a transaction-log
-// module's), Display (Mic.Modeling provides it), GrantAccess (MIC's per-record masks replace it), PropertyGroup,
+// module's), Display (a caption belongs to MIC's metadata, outside the ORM), GrantAccess (MIC's per-record masks
+// replace it), PropertyGroup,
 // Groups.

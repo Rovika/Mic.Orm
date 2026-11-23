@@ -203,6 +203,35 @@ public static partial class EntitySessionExtensions {
     return session.GetNextSequenceValueAsync(sequence.Name);
   }
 
+  /// <summary>Asynchronously loads an on-demand member of an entity: the load the member's getter would run on the
+  /// calling thread.</summary>
+  /// <typeparam name="TEntity">The entity interface.</typeparam>
+  /// <param name="session">The session the entity belongs to.</param>
+  /// <param name="entity">The entity.</param>
+  /// <param name="member">An expression that names the member, such as <c>a => a.Body</c>.</param>
+  /// <returns>A task that represents the asynchronous operation.</returns>
+  /// <remarks>An entity that holds the member completes at once and runs nothing. Where the smart load is on, the
+  /// member is loaded for every entity of the type the session tracks that lacks it, in the same statement.
+  /// </remarks>
+  /// <exception cref="ArgumentException">The member is not marked <c>[OnDemand]</c>. -or- The entity belongs to
+  /// another session.</exception>
+  public static Task LoadMemberAsync<TEntity>(this IEntitySession session, TEntity entity,
+      Expression<Func<TEntity, object?>> member) where TEntity : class {
+    ArgumentNullException.ThrowIfNull(entity);
+    ArgumentNullException.ThrowIfNull(member);
+    var entSession = GetSession(session);
+    var record = EntityHelper.GetRecord(entity);
+    if (!ReferenceEquals(record.Session, entSession))
+      throw new ArgumentException($"The '{record.Entity.Name}' belongs to another session, or to none.", nameof(entity));
+    var name = EntityHelper.GetMemberName(member);
+    var info = record.Entity.FindMember(name);
+    if (info is not { IsOnDemand: true })
+      throw new ArgumentException(
+        $"'{record.Entity.Name}.{name}' is not an on-demand member; only a member marked [OnDemand] is loaded alone.",
+        nameof(member));
+    return record.Loaded.IsSet(info.DataIndex) ? Task.CompletedTask : entSession.LoadMemberAsync(record, info);
+  }
+
   private static EntitySession GetSession(IEntitySession session) {
     ArgumentNullException.ThrowIfNull(session);
     return session as EntitySession

@@ -2,7 +2,6 @@ using Mic.Linq;
 using Mic.Linq.ExpressionTree;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Model;
 
 namespace Mic.Orm.Runtime;
@@ -40,7 +39,7 @@ internal static class QueryablePropertyHelper {
   /// <param name="row">The row of the many-owners form.</param>
   /// <param name="member">The queryable member.</param>
   /// <returns>The owner's key, or <see langword="null"/> where a slot is null.</returns>
-  internal static EntityKey? ReadOwnerKey(IEntityData row, EntityMemberInfo member) {
+  internal static EntityKey? ReadOwnerKey(ProjectionData row, EntityMemberInfo member) {
     var key = member.ListInfo!.InverseMember!.ReferenceInfo!.ToKey;
     var count = key.MembersExpanded.Count;
     if (count == 1)

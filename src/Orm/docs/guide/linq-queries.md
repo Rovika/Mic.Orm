@@ -260,7 +260,8 @@ var orders = await session.EntitySet<IOrder>()
 
 `Include(o => new { o.Customer, o.Lines })` names several members at once. `session.AddInclude<IOrder>(o =>
 o.Customer)` adds an include to every query over `IOrder` in the session; `context.AddInclude<IOrder>(…)` to every
-query of every session of the context.
+query of every session of the context. An include takes an [on-demand member](on-demand-members.md) too:
+`Include(a => a.Body)`.
 
 The engine builds no join for an include. Each included set is loaded by a separate query: the orders, then
 their customers by key, their lines by the orders' keys, then the products of the lines. Entity Framework Core

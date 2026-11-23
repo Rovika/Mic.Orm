@@ -1,5 +1,4 @@
 using System.Text;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Provider;
 
 namespace Mic.Orm.Db.Model.Upgrades;

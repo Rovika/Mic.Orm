@@ -75,6 +75,21 @@ public struct EntityMemberMask : IEquatable<EntityMemberMask> {
     }
   }
 
+  /// <summary>Determines whether every bit set in another mask is set in this one.</summary>
+  /// <param name="other">The mask to look for.</param>
+  /// <returns><see langword="true"/> if no bit of <paramref name="other"/> is unset here; otherwise,
+  /// <see langword="false"/>.</returns>
+  public readonly bool Contains(EntityMemberMask other) {
+    if ((other._bits & ~_bits) != 0)
+      return false;
+    if (other._more is not { } theirs)
+      return true;
+    for (var i = 0; i < theirs.Length; i++)
+      if ((theirs[i] & ~(_more != null && i < _more.Length ? _more[i] : 0)) != 0)
+        return false;
+    return true;
+  }
+
   /// <summary>Gets the indexes that are set, in ascending order.</summary>
   /// <returns>The set indexes.</returns>
   public readonly IEnumerable<int> GetSetIndexes() {

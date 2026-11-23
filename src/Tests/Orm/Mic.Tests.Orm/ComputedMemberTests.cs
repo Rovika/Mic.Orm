@@ -1,5 +1,5 @@
-using Mic.Modeling;
 using Mic.Orm;
+using Mic.Orm.Logging;
 using Mic.Orm.Model;
 using Mic.Orm.Runtime;
 

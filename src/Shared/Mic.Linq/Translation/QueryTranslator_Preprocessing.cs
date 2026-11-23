@@ -62,6 +62,9 @@ public sealed partial class QueryTranslator {
         QueryMaker.NamedOp(NamedOpType.Concat, typeof(string), concat.Left, concat.Right),
       ExpressionNode { NodeType: ExpressionType.Conditional, ChildCount: 3 } conditional =>
         ConvertConditional(conditional),
+      // The Length of an array of values is the count of its items.
+      ExpressionNode { NodeType: ExpressionType.ArrayLength, ChildCount: 1 } length =>
+        MakeItemCount(length.Children[0], length.Source) ?? node,
       // x == null and x != null are one operation each, IS NULL and IS NOT NULL, however the sink spells them; an
       // entity against null is the entity conversion's, which makes them per key column.
       BinaryNode { NodeType: ExpressionType.Equal or ExpressionType.NotEqual } equality
@@ -111,6 +114,11 @@ public sealed partial class QueryTranslator {
     // GeoFunctions.Distance(point, other): metres between two points, measured by the server.
     if (call.DeclaringType == typeof(GeoFunctions) && call.MethodName == nameof(GeoFunctions.Distance) && call.ArgumentCount == 2)
       return QueryMaker.NamedOp(NamedOpType.GeoDistance, typeof(double), call.Argument(0), call.Argument(1));
+
+    // VectorFunctions.Distance(vector, other): the distance between two vectors, measured by the server.
+    if (call.DeclaringType == typeof(VectorFunctions) && call.MethodName == nameof(VectorFunctions.Distance)
+        && call.ArgumentCount == 2)
+      return QueryMaker.NamedOp(NamedOpType.VectorDistance, typeof(double), call.Argument(0), call.Argument(1));
 
     // FullText.Matches(row, query, kind, distance) and Rank(…): the row, the words, and what the words mean.
     if (call.DeclaringType == typeof(FullText) && call.ArgumentCount == 4)
@@ -422,11 +430,29 @@ public sealed partial class QueryTranslator {
   /// <summary>Converts a CLR member of a value, such as <c>name.Length</c>, <c>date.Year</c> or
   /// <c>when.HasValue</c>, into the operation, the null test or the value it spells; or returns
   /// <see langword="null"/> where it spells none.</summary>
+  /// <summary>Makes the count of a collection's items as the <c>Count()</c> call over it, which the engine
+  /// translates, where the collection is a member that holds values or a path into a JSON document.</summary>
+  /// <returns>The call, or <see langword="null"/> for any other owner: a list of entities, a local collection.
+  /// </returns>
+  private static QueryNode? MakeItemCount(QueryNode owner, Expression? source) {
+    var holdsValues = owner is MemberAccessNode { ModelMember.Kind: LinqMemberKind.Value }
+      or NamedOpNode { OpType: NamedOpType.JsonValue };
+    if (!holdsValues || owner.DataType is not { } type || JsonTranslationHelper.GetJsonElementType(type) == null)
+      return null;
+    return new MethodCallNode(nameof(Enumerable.Count), dataType: typeof(int), source: source) {
+      DeclaringType = typeof(Enumerable), ReturnType = typeof(int), Children = { owner },
+    };
+  }
+
   private static QueryNode? ConvertClrMember(MemberAccessNode member) {
     var owner = member.Target;
     if (owner == null)
       return null;
     var declaring = member.ClrMember!.DeclaringType;
+
+    // The Count of a list of values is the count of its items.
+    if (member.MemberName == nameof(List<object>.Count) && MakeItemCount(owner, member.Source) is { } itemCount)
+      return itemCount;
 
     // A property of a JSON document is a path into it, under the property's JSON name; a hop further down extends
     // the path.

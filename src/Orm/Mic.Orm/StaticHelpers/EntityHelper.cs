@@ -198,7 +198,7 @@ public static class EntityHelper {
   }
 
   // The name of the property a selector reads off its parameter, as in `x => x.Settings`.
-  private static string GetMemberName(LambdaExpression selector) {
+  internal static string GetMemberName(LambdaExpression selector) {
     ArgumentNullException.ThrowIfNull(selector);
     var body = selector.Body;
     // The selector's result is `object`, so the compiler boxes a value or converts a reference.

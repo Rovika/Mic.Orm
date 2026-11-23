@@ -57,7 +57,7 @@ The members of `DbSettings`:
 
 | Member | Default | Meaning |
 |---|---|---|
-| `Provider` | | The provider: `PostgresProvider`, `SqlServerProvider`, `MySqlProvider`, `OracleProvider`, `SqliteProvider`. |
+| `Provider` | | The provider: `PostgresProvider`, `SqlServerProvider`, `MySqlProvider`, `OracleProvider`, `SqliteProvider`, `Db2Provider`. |
 | `ConnectionString` | | The connection string the application's work runs on. |
 | `SchemaConnectionString` | the connection string | A second connection string for schema changes, for a login with DDL rights. |
 | `DatabaseAlias` | `"(default)"` | The name the application knows this database by. |

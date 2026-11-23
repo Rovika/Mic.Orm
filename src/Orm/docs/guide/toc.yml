@@ -34,6 +34,8 @@
       href: full-text.md
     - name: Geographic points
       href: geo-points.md
+    - name: Vector search
+      href: vector-search.md
     - name: Data cache
       href: data-cache.md
     - name: QueryMaker
@@ -44,6 +46,8 @@
       href: locking.md
     - name: Smart loading
       href: smart-loading.md
+    - name: On-demand members
+      href: on-demand-members.md
     - name: Guid generation
       href: guid-generation.md
     - name: Logging
@@ -58,18 +62,24 @@
       href: multi-tenancy.md
     - name: Soft delete extension
       href: soft-delete.md
-- name: How to…
-  href: how-to.md
-- name: Database server specifics
-  href: servers.md
-- name: Setup in ASP.NET Core
-  href: aspnet-core.md
+- name: Servers and hosting
+  items:
+    - name: Database server specifics
+      href: servers.md
+    - name: MIC ORM on an existing Db2 database
+      href: existing-db2-database.md
+    - name: Array columns on PostgreSQL
+      href: postgres-arrays.md
+    - name: Setup in ASP.NET Core
+      href: aspnet-core.md
 - name: Tools
   items:
     - name: Generating entities from a database
       href: tool-entities.md
     - name: Generating the upgrade script
       href: tool-upgrade.md
+- name: How to…
+  href: how-to.md
 - name: Running tests
   href: running-tests.md
 - name: Advanced example - Beauty Shop

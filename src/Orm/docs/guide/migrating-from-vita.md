@@ -17,6 +17,7 @@ and its session code. The application and module setup changes.
 
 | VITA | MIC ORM |
 |---|---|
+| Targets .NET Standard 2.0 | Targets .NET 10. A project on .NET Standard, .NET Framework or an earlier .NET moves to .NET 10 first. |
 | Packages `Vita`, `Vita.Data.Postgres`, `Vita.Data.MsSql`, `Vita.Data.MySql`, `Vita.Data.Oracle`, `Vita.Data.SQLite` | `Mic.Orm`, `Mic.Orm.Db.Postgres`, `Mic.Orm.Db.SqlServer`, `Mic.Orm.Db.MySql`, `Mic.Orm.Db.Oracle`, `Mic.Orm.Db.Sqlite` |
 | Drivers `PgDbDriver`, `MsSqlDbDriver`, `MySqlDbDriver`, `OracleDbDriver`, `SQLiteDbDriver` | Providers `PostgresProvider`, `SqlServerProvider`, `MySqlProvider`, `OracleProvider`, `SqliteProvider` |
 | `EntityArea`: `app.AddArea("dbo")` and `new MyModule(area)` | No areas. `AddModule(module, "schema")` or `AssignSchema` puts a module in a schema; `EntityAppSettings.DefaultSchema` is the default. |
@@ -33,7 +34,7 @@ and its session code. The application and module setup changes.
 | `EntitySessionOptions`: `DisableLog`, `DisableCache`, `DisableBatchMode`, `DisableSmartLoad` | `DisableSmartLoad`, `DisableBatchMode`. The log is the context's `LogMode`; the cache is skipped per request with `QueryOptions.SkipEntityCache` or `LoadFlags.SkipCache`. |
 | `SaveChanges()` writes and keeps tracking | `SaveChanges(SaveOptions)`; `SaveOptions.InsertAndForget` stops tracking |
 | VITA `[Validate(typeof(T), "Method")]` | `[Validator(typeof(T), "Method")]` |
-| `[DependsOn]`, `[Display]`, `[GrantAccess]`, `[Groups]`, `[PropertyGroup]`, `[PropagateUpdatedOn]`, `[TransactionId]`, `[DiscardOnAbort]` | Not carried over. `Display` is in `Mic.Modeling`. Authorization and transaction logging are outside the ORM. |
+| `[DependsOn]`, `[Display]`, `[GrantAccess]`, `[Groups]`, `[PropertyGroup]`, `[PropagateUpdatedOn]`, `[TransactionId]`, `[DiscardOnAbort]` | Not carried over. Authorization and transaction logging are outside the ORM. |
 | `module.RegisterMigrations(DbMigrationSet)` | No per-module migrations. A data migration is a statement in the upgrade script. |
 | `module.RegisterFunctions(…)` for SQL functions used in LINQ | Removed. |
 | `module.Init()`, `AppInitComplete()`, `Shutdown()` | `OnModelConstructed(EntityAppModel model)` on the module and the application. |
@@ -71,8 +72,8 @@ calls, as under Vita's `RunMode`; it does not wait on a task.
 
 ## Steps
 
-1. **Replace the packages.** Remove `Vita` and `Vita.Data.*`; add `Mic.Orm` to the model project and the provider
-   package to the host.
+1. **Replace the packages.** Set the projects' target to `net10.0`. Remove `Vita` and `Vita.Data.*`; add
+   `Mic.Orm` to the model project and the provider package to the host.
 2. **Build.** Entity interfaces compile as they are. Fix the attribute renames: `[Validate]` to `[Validator]`;
    remove the attributes that were not carried over.
 3. **Rewrite the modules.** Drop the `EntityArea` parameter: `base("Name", new Version(1, 0))`. Move

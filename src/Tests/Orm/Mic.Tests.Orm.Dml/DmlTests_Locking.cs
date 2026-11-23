@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Mic.Linq;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
@@ -43,7 +42,8 @@ public abstract partial class DmlTests {
     await using (var second = NewSession()) {
       var held = await first.GetEntityAsync<Dml.IDocument>(document, LoadFlags.WriteLock);
       var clock = Stopwatch.StartNew();
-      var waiting = second.GetEntityAsync<Dml.IDocument>(document, LoadFlags.WriteLock);
+      // On a thread of its own: a driver whose asynchronous calls block, as IBM's do, would hold this one.
+      var waiting = Task.Run(() => second.GetEntityAsync<Dml.IDocument>(document, LoadFlags.WriteLock));
       var finishedEarly = await Task.WhenAny(waiting, Task.Delay(400)) == waiting;
       var outcome = waiting.IsFaulted ? "it failed: " + waiting.Exception!.GetBaseException() : "it completed";
       Assert.IsFalse(finishedEarly,
@@ -108,6 +108,88 @@ public abstract partial class DmlTests {
     var final = await check.GetEntityAsync<Dml.IDocument>(document);
     Assert.AreEqual(99 + writers * rounds, final.Lines.Sum(l => l.Value), "every increment landed — no lost update");
     Assert.AreEqual(final.Lines.Sum(l => l.Value), final.Total);
+  }
+
+  [TestMethod]
+  public async Task LockedRead_RefreshesTheTrackedRecord() {
+    var document = await NewDocumentAsync("fresh-" + Guid.NewGuid().ToString("N")[..6], 1);
+    if (!Db.Provider.Supports(DbFeatures.RowLocks))
+      Assert.Inconclusive($"{Db.Provider.ServerKind} has no row locks; a locked read answers the tracked record.");
+
+    // ----- a read by key under a lock --------------------------------------------------------------------------
+    await using var session = NewSession();
+    var header = await session.GetEntityAsync<Dml.IDocument>(document);
+    header.Name = "mine";
+    await ChangeDocumentAsync(document, "theirs", 7);
+    Assert.AreEqual(0, header.Total, "the session's copy, read before the other session saved");
+
+    var locked = await session.GetEntityAsync<Dml.IDocument>(document, LoadFlags.WriteLock);
+
+    Assert.AreSame(header, locked, "one identity, one entity");
+    Assert.AreEqual(7, header.Total, "a member not assigned is what the server holds under the lock");
+    Assert.AreEqual("mine", header.Name, "a member assigned before the lock is kept");
+    // The row version came with the refresh, so the save matches the row and is not refused as stale.
+    await session.SaveChangesAsync();
+    await using (var check = NewSession()) {
+      var saved = await check.GetEntityAsync<Dml.IDocument>(document);
+      Assert.AreEqual("mine", saved.Name);
+      Assert.AreEqual(7, saved.Total, "the other session's total stands: the update named the name alone");
+    }
+
+    // ----- a plain query keeps the tracked record; a locked one refreshes it -----------------------------------------
+    await ChangeDocumentAsync(document, "theirs", 9);
+    await session.EntitySet<Dml.IDocument>().Where(d => d.Id == document).ToListAsync();
+    Assert.AreEqual(7, header.Total, "a plain query answers the tracked record as it is");
+
+    await session.BeginTransactionAsync();
+    var rows = await session.EntitySet<Dml.IDocument>(QueryOptions.LockForUpdate).Where(d => d.Id == document)
+      .ToListAsync();
+    Assert.AreSame(header, rows.Single());
+    Assert.AreEqual(9, header.Total, "a locked query refreshes the rows it holds");
+    Assert.AreEqual("theirs", header.Name);
+    await session.RollbackTransactionAsync();
+  }
+
+  [TestMethod]
+  public async Task LockedRead_LeavesAnOnDemandMemberToBeLoadedAgain() {
+    if (!Db.Provider.Supports(DbFeatures.RowLocks))
+      Assert.Inconclusive($"{Db.Provider.ServerKind} has no row locks; a locked read answers the tracked record.");
+    var entity = App.Model!.FindEntity("Article")!;
+    var (body, summary) = (entity.GetMember("Body"), entity.GetMember("Summary"));
+    Guid id;
+    await using (var writer = NewSession()) {
+      var written = writer.NewEntity<Dml.IArticle>();
+      (written.Title, written.Body, written.Summary) = ("locked", "first text", "first summary");
+      await writer.SaveChangesAsync();
+      id = written.Id;
+    }
+
+    await using var session = NewSession();
+    var article = await session.GetEntityAsync<Dml.IArticle>(id);
+    var record = ((EntityBase)article).Record;
+    Assert.AreEqual("first text", article.Body);
+    article.Summary = "mine";
+    await using (var other = NewSession()) {
+      var theirs = await other.GetEntityAsync<Dml.IArticle>(id);
+      (theirs.Body, theirs.Summary) = ("second text", "theirs");
+      await other.SaveChangesAsync();
+    }
+
+    // ----- a plain read leaves the text the record holds ---------------------------------------------------------
+    await session.EntitySet<Dml.IArticle>().Where(a => a.Id == id).ToListAsync();
+    Assert.IsTrue(record.Loaded.IsSet(body.DataIndex));
+    Assert.AreEqual("first text", article.Body);
+
+    // ----- a read under a lock: its row does not carry the text, so the record lets go of it --------------------
+    await session.GetEntityAsync<Dml.IArticle>(id, LoadFlags.WriteLock);
+
+    Assert.IsFalse(record.Loaded.IsSet(body.DataIndex), "the text read before the lock is not held any more");
+    Assert.AreEqual("second text", article.Body, "the next read loads it, under the lock");
+    Assert.AreEqual("mine", article.Summary, "a member assigned before the lock is kept");
+    Assert.IsTrue(record.Modified.IsSet(summary.DataIndex));
+    await session.SaveChangesAsync();
+    Assert.AreEqual("second text", await ScalarAsync<string>("Article", "Body", id));
+    Assert.AreEqual("mine", await ScalarAsync<string>("Article", "Summary", id));
   }
 
   [TestMethod]
@@ -177,6 +259,15 @@ public abstract partial class DmlTests {
   }
 
   /// <summary>A document with its lines, saved and let go of — only its key comes back.</summary>
+  /// <summary>Changes a document's name and total in a session of its own, as another user would.</summary>
+  private async Task ChangeDocumentAsync(Guid document, string name, int total) {
+    await using var other = NewSession();
+    var theirs = await other.GetEntityAsync<Dml.IDocument>(document);
+    theirs.Name = name;
+    theirs.Total = total;
+    await other.SaveChangesAsync();
+  }
+
   private async Task<Guid> NewDocumentAsync(string name, int lines) {
     await using var session = NewSession();
     var document = session.NewEntity<Dml.IDocument>();

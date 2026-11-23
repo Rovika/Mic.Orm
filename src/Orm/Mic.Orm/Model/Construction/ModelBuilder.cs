@@ -104,6 +104,13 @@ public class ModelBuilder {
           context.AddError("is cached and has no primary key; the cache holds an entity's rows by key.", entity.Name);
           continue;
         }
+        // The cache answers queries from its rows in memory, so it holds each row whole.
+        if (declared.CacheType.HasFlag(CacheType.Server)
+            && entity.Members.FirstOrDefault(m => m.IsOnDemand) is { } onDemand) {
+          context.AddError($"is cached and has an [OnDemand] member, '{onDemand.Name}'; a cached entity's rows are "
+            + "held whole.", entity.Name);
+          continue;
+        }
         entity.CacheType = declared.CacheType;
         // An infinite span means never, kept as null.
         var expiration = declared.Expiration ?? context.App.DefaultCacheExpiration;

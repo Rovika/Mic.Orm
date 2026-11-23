@@ -1,4 +1,4 @@
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 
 namespace Mic.Tests.Orm.Db;
 

@@ -1,4 +1,4 @@
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 using Mic.Orm.Model;
 
 namespace Mic.Orm;

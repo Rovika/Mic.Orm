@@ -1,7 +1,6 @@
 using Mic.Common;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm.Model;
 namespace Mic.Orm.Db.Model;
 
@@ -65,6 +64,10 @@ public class DbColumnInfo : DbModelObject, ILinqColumn {
   /// <summary>Gets a value that indicates whether this column holds a geographic point, read and written as
   /// well-known binary through the dialect's spelling.</summary>
   public bool IsGeoPoint => Member?.DataType == typeof(GeoPoint) || TypeRef.ClrType == typeof(GeoPoint);
+
+  /// <summary>Gets a value that indicates whether this column holds a vector, read and written through the
+  /// dialect's spelling.</summary>
+  public bool IsVector => Member?.IsVector == true;
 
   /// <summary>Gets this column's name as a statement writes it, quoted.</summary>
   /// <remarks>The value is filled by <see cref="Construction.DbModelBuilderHelper.CompleteSetup"/>.</remarks>

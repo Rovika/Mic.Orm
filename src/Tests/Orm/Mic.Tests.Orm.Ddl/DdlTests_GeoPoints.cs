@@ -1,6 +1,6 @@
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Runtime;
 
@@ -56,7 +56,8 @@ public abstract partial class DdlTests {
     Assert.AreEqual(0, again.Changes!.Items.Count, again.Changes.Report());
     var table = (await Db.LoadAsync()).FindTable(Db.Schema, "GeoPlace")!;
     var loaded = table.FindColumn("Location")!;
-    if (Db.Settings.Provider.ServerKind != DbServerKind.SQLite)
+    // SQLite and Db2 hold a point as bytes, and the loader reports the bytes.
+    if (Db.Settings.Provider.ServerKind is not (DbServerKind.SQLite or DbServerKind.Db2))
       Assert.IsTrue(loaded.IsGeoPoint, $"the loader reports the column as a point, not as '{loaded.TypeSpec}'");
 
     // ----- the index over it is the server's spatial index, read back as such ------------------------------------

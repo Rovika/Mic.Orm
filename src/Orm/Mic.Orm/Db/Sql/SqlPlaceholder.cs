@@ -2,7 +2,6 @@ using System.Text;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
 

@@ -2,7 +2,6 @@ using System.Data.Common;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sql;
 using Mic.Orm.Model;
@@ -29,7 +28,7 @@ public sealed class ProjectionReader : IResultReader {
   public async Task<object?> ReadAsync(DataCommand command, System.Data.Common.DbDataReader reader,
       CancellationToken cancellation) {
     var members = _shape.Members;
-    var rows = new List<IEntityData>();
+    var rows = new List<ProjectionData>();
     while (await command.ReadRowAsync(reader, cancellation)) {
       var row = new ProjectionData(_shape);
       for (var i = 0; i < members.Count; i++)
@@ -70,7 +69,7 @@ public sealed class BundleReader : IResultReader {
   public async Task<object?> ReadAsync(DataCommand command, System.Data.Common.DbDataReader reader,
       CancellationToken cancellation) {
     var provider = _session.Database!.Provider;
-    var rows = new List<IEntityData>();
+    var rows = new List<ProjectionData>();
     while (await command.ReadRowAsync(reader, cancellation)) {
       var row = new ProjectionData(_shape);
       foreach (var slot in _slots)

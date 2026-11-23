@@ -65,6 +65,9 @@ internal class MemberBuilder(BuilderContext context) {
       TargetEntity = target,
       Property = property,
     };
+    if (kind == MemberKind.Column && property.GetCustomAttribute<JsonAttribute>() == null
+        && property.GetCustomAttribute<VectorAttribute>() == null)
+      member.ArrayItemType = GetArrayItemType(property.PropertyType);
     entity.AddMember(member);
   }
 
@@ -101,11 +104,27 @@ internal class MemberBuilder(BuilderContext context) {
     if (property.GetCustomAttribute<JsonAttribute>() != null)
       return (MemberKind.Column, null, true);
 
+    // An array or a List of scalars is an array column, on a server that has array types.
+    if (GetArrayItemType(type) != null)
+      return (MemberKind.Column, null, true);
+
     if (type.IsInterface)
       context.AddError($"is of type '{type.Name}', which is not a registered entity — is its module missing it?", location);
     else
       context.AddError($"is of type '{type.Name}', which the ORM cannot map.", location);
     return (MemberKind.Column, null, false);
+  }
+
+  /// <summary>Gets the item type of an array or a <see cref="List{T}"/> whose items are scalars.</summary>
+  /// <returns>The item type, or <see langword="null"/> for any other type, a byte array included: that one is a
+  /// binary value.</returns>
+  private static Type? GetArrayItemType(Type type) {
+    var item = type.IsArray && type.GetArrayRank() == 1 ? type.GetElementType()
+      : type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>) ? type.GetGenericArguments()[0]
+      : null;
+    if (item == null || type == typeof(byte[]) || item.IsEnum)
+      return null;
+    return item.IsPrimitive || ScalarTypes.Contains(item) ? item : null;
   }
 
   private static Type? GetListItemType(Type type) {

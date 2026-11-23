@@ -1,4 +1,3 @@
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
 
@@ -50,6 +49,9 @@ public class DbUpgradeScriptBuilder {
     // The server is made able to hold a geographic point before the first stage that adds one.
     if (changes.Items.Any(AddsGeoPoint) && Ddl.GeoPointPrerequisite() is { } prerequisite)
       Emit(DbUpgradeStage.AddSchemas, prerequisite, null);
+    // And able to hold a vector before the first stage that adds one.
+    if (changes.Items.Any(AddsVector) && Ddl.VectorPrerequisite() is { } vectorPrerequisite)
+      Emit(DbUpgradeStage.AddSchemas, vectorPrerequisite, null);
 
     foreach (var change in changes.Items)
       Dispatch(change, Emit);
@@ -77,6 +79,14 @@ public class DbUpgradeScriptBuilder {
     change.DiffKind != DbDiffKind.Drop && change.Target switch {
       DbTableInfo table => DbDdlBuilder.HasGeoPoint(table),
       DbColumnInfo column => column.IsGeoPoint,
+      _ => false,
+    };
+
+  /// <summary>Determines whether a change adds or alters a table or a column that holds a vector.</summary>
+  private static bool AddsVector(DbObjectDiffInfo change) =>
+    change.DiffKind != DbDiffKind.Drop && change.Target switch {
+      DbTableInfo table => DbDdlBuilder.HasVector(table),
+      DbColumnInfo column => column.IsVector,
       _ => false,
     };
 
@@ -234,7 +244,8 @@ public class DbUpgradeScriptBuilder {
           break;
         }
 
-        emit(DbUpgradeStage.AddColumns, Ddl.AddColumn(added, asNullable: deferred), change);
+        foreach (var statement in Ddl.AddColumnToTable(added, asNullable: deferred))
+          emit(DbUpgradeStage.AddColumns, statement, change);
         if (Ddl.CommentComputedColumn(added) is { } addedComment)
           emit(DbUpgradeStage.AddColumns, addedComment, change);
         if (deferred)
@@ -246,7 +257,9 @@ public class DbUpgradeScriptBuilder {
           WarnWithheld("column", change, "this server cannot drop a column");
           break;
         }
-        emit(DbUpgradeStage.DropColumns, Ddl.DropColumn((DbColumnInfo)change.Source!), change);
+        var dropped = (DbColumnInfo)change.Source!;
+        emit(DbUpgradeStage.DropColumns, Ddl.DropColumn(dropped), change);
+        EmitAfterTableModified(DbUpgradeStage.DropColumns, dropped, change, emit);
         break;
 
       case DbDiffKind.Rename:
@@ -266,7 +279,9 @@ public class DbUpgradeScriptBuilder {
             foreach (var statement in Ddl.DropKey(key))
               emit(DbUpgradeStage.DropKeys, statement, change);
           emit(DbUpgradeStage.DropComputedColumns, Ddl.DropColumn(old), change);
-          emit(DbUpgradeStage.AddColumns, Ddl.AddColumn(@new), change);
+          EmitAfterTableModified(DbUpgradeStage.DropComputedColumns, old, change, emit);
+          foreach (var statement in Ddl.AddColumnToTable(@new))
+            emit(DbUpgradeStage.AddColumns, statement, change);
           if (Ddl.CommentComputedColumn(@new) is { } recreatedComment)
             emit(DbUpgradeStage.AddColumns, recreatedComment, change);
           foreach (var key in GetKeysOver(@new))
@@ -278,8 +293,13 @@ public class DbUpgradeScriptBuilder {
           WarnWithheld("column", change, "this server cannot change a column in place");
           break;
         }
-        foreach (var statement in Ddl.AlterColumn(old, @new))
+        var altered = false;
+        foreach (var statement in Ddl.AlterColumn(old, @new)) {
           emit(DbUpgradeStage.AlterColumns, statement, change);
+          altered = true;
+        }
+        if (altered)
+          EmitAfterTableModified(DbUpgradeStage.AlterColumns, @new, change, emit);
 
         // Tightening an existing column follows the same sequence as adding a required one.
         if (old.IsNullable && !@new.IsNullable)
@@ -306,6 +326,15 @@ public class DbUpgradeScriptBuilder {
         emit(DbUpgradeStage.InitColumns, init, change);
     }
     emit(DbUpgradeStage.AlterColumns, Ddl.SetColumnNotNull(column), change);
+    EmitAfterTableModified(DbUpgradeStage.AlterColumns, column, change, emit);
+  }
+
+  /// <summary>Emits the statement the server wants after a column of a table was dropped or altered, where it
+  /// wants one, into the stage of the change.</summary>
+  private void EmitAfterTableModified(DbUpgradeStage stage, DbColumnInfo column, DbObjectDiffInfo change,
+      Action<DbUpgradeStage, DdlStatement, DbObjectDiffInfo?> emit) {
+    if (column.Table != null && Ddl.AfterTableModified(column.Table) is { } statement)
+      emit(stage, statement, change);
   }
 
   /// <summary>Gets the keys of a column's table that include the column.</summary>

@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/10/nuspec.xsd">
+  <metadata>
+    <id>Mic.Orm</id>
+    <version>0.10.0-preview.1</version>
+    <authors>Rovika Software, Inc</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <projectUrl>https://github.com/Rovika/Mic.Orm</projectUrl>
+    <description>MIC ORM: a .NET ORM in which an entity is a C# interface and the database schema follows the model. LINQ, schema upgrade and one model for PostgreSQL, SQL Server, MySQL, Oracle and SQLite. Add the provider package of the server in use.</description>
+    <copyright>Rovika Software, Inc</copyright>
+    <tags>orm database linq postgresql sqlserver mysql oracle sqlite</tags>
+    <repository type="git" url="https://github.com/Rovika/Mic.Orm" commit="7b9b3de184966252491ddceda3cfc7002404ee58" />
+  </metadata>
+</package>

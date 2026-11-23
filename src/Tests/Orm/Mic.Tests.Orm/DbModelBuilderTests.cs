@@ -1,10 +1,9 @@
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Postgres;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sqlite;
+using Mic.Orm.Logging;
 using Mic.Orm.Model;
 using Mic.Orm.Model.Construction;
 
@@ -127,24 +126,6 @@ public class DbModelBuilderTests {
     Assert.AreEqual("Address_Id", constraint.FromKey.Columns.Single().Column.Name);
     Assert.AreSame(address.PrimaryKey, constraint.ToKey);
     Assert.IsNotNull(constraint.Reference);
-
-    // ----- and every link above, PACKAGED as a mapping ---------------------------------------------------------------
-    //
-    // A CO-PRODUCT of this build, not a projection taken afterwards: it is filled in the same pass that set the links,
-    // so it cannot come to describe a model other than the one it arrived with. What the runtime reads is still the
-    // references — this is the form that can be stored, sent and shown.
-    var mapping = db.EntityModelMapping!;
-    Assert.IsNotNull(mapping);
-    Assert.AreEqual("App", mapping.ModelA);
-    Assert.AreEqual(db.Name, mapping.ModelB);
-
-    // A is the entity model and B the db model, said by the two names above rather than by the letters — a mapping is
-    // a correspondence, so neither end is privileged.
-    var personMap = mapping.Objects.Single(o => o.A.Name == "Person");
-    Assert.AreEqual(new ModelObjectRef("app", "Person"), personMap.A);   // the entity group is the schema FOR NOW — see TECH_DEBT
-    Assert.AreEqual(new ModelObjectRef("app", "people"), personMap.B);
-    CollectionAssert.Contains(personMap.Members, new MemberMappingDef("City", "home_city"));
-    Assert.IsFalse(personMap.Members.Any(m => m.A == "Phones"), "what has no column is not mapped");
   }
 
   [TestMethod]

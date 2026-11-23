@@ -1,8 +1,8 @@
-using Mic.Modeling;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Postgres;
 using Mic.Orm.DbInfo;
+using Mic.Orm.Logging;
 using Mic.Orm.Model.Construction;
 
 namespace Mic.Tests.Orm;

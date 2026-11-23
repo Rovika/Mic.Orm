@@ -1,6 +1,4 @@
 using System.Data.Common;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Model.Upgrades;
@@ -256,9 +254,12 @@ public class DbModelLoader {
 
       // An index over an expression has no columns to read; the provider reads what it can off the definition.
       var key = BuildKey(table, name, flags, byIndex, GetQualifiedIndexName(table, name));
-      if (key != null)
+      if (key != null) {
         key.IndexType = ParseIndexType(row.GetString("index_type"));
-      else
+        // The metric of a vector index, where the provider's query reports one by the enumeration's name.
+        if (Enum.TryParse<VectorMetric>(row.GetString("vector_metric"), out var metric))
+          key.VectorMetric = metric;
+      } else
         key = ReadExpressionIndex(table, name, flags, row);   // which sets the index type itself
       if (key == null)
         continue;
@@ -294,6 +295,7 @@ public class DbModelLoader {
       "fulltext" => DbIndexType.FullText,
       "spatial" => DbIndexType.Spatial,
       "bitmap" => DbIndexType.Bitmap,
+      "hnsw" => DbIndexType.Hnsw,
       _ => Provider.DefaultIndexType,
     };
 

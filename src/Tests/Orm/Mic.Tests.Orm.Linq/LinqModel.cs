@@ -1,5 +1,5 @@
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 using Mic.Orm.Runtime;
 
 namespace Mic.Tests.Orm.Linq;

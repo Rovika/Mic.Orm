@@ -1,6 +1,5 @@
 using Mic.Linq;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sql;
@@ -17,8 +16,6 @@ public class MySqlSqlDialect : SqlDialect {
     GeoPointWrite = "ST_GeomFromWKB({0}, 4326, 'axis-order=long-lat')";
     // Metres on a sphere; ST_Distance on SRID 4326 would be metres too, on the spheroid, but it is slower and 8.0.19+.
     FunctionTemplates[NamedOpType.GeoDistance] = "ST_Distance_Sphere({0}, {1})";
-    // "All parts of a SPATIAL index must be NOT NULL".
-    SpatialIndexNeedsNotNull = true;
     CreateTempTable = "CREATE TEMPORARY TABLE {0} (\n{1}\n)";
     DropTempTable = "DROP TEMPORARY TABLE {0}";
     // The server re-renders a view's definition without its comments and has no view comments, so the hash is a
@@ -40,9 +37,6 @@ public class MySqlSqlDialect : SqlDialect {
     // is looked up in every table named.
     UpdateFrom = "UPDATE {0} AS {1}\n    INNER JOIN {3} {4} ON {5}\n  SET {2}";
     UpdateAssignment = "{2}.{0} = {1}";
-    // A sub-query may not read the table a DELETE deletes from (error 1093) unless through a derived table, which is
-    // materialized first.
-    DeleteSubQueryWrapped = true;
 
     // Backticks; double quotes work only under ANSI_QUOTES, a server setting not to assume.
     QuoteLeft = "`";
@@ -271,10 +265,4 @@ public class MySqlSqlDialect : SqlDialect {
       expression = $"JSON_REMOVE({expression}, {string.Join(", ", removed.Select(p => $"'{p.Path.Replace("'", "''")}'"))})";
     return expression;
   }
-
-  /// <summary>Gets a value that indicates whether an exists test over JSON rows is asked as a <c>COUNT(*)</c>.
-  /// </summary>
-  /// <remarks>MySQL 8.4 answers <c>EXISTS</c> over a <c>JSON_TABLE</c> that reads the outer row with nothing,
-  /// whatever the rows hold; a <c>COUNT(*)</c> over the same source is right.</remarks>
-  public override bool CountsJsonRowsForExists => true;
 }

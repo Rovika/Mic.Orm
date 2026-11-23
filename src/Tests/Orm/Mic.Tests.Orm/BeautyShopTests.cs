@@ -1,6 +1,5 @@
 using Mic.Linq.ExpressionTree;
 using Mic.Linq.Translation;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Postgres;

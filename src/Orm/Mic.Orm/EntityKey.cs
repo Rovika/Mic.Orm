@@ -1,5 +1,5 @@
 using Mic.Common;
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 using Mic.Orm.Model;
 using Mic.Orm.Runtime;
 

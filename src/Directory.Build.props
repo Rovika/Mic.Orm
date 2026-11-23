@@ -3,7 +3,7 @@
 <Project>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <Version>0.9.0-preview.1</Version>
+    <Version>0.10.0-preview.1</Version>
     <!-- The assembly version holds the major and minor numbers of the version and nothing after them, so assemblies
          a patch apart bind to each other: the database tool hands an application its own Mic.Orm, and .NET binds a
          reference only to the same assembly version or a higher one. The file version carries the patch. -->

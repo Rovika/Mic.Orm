@@ -1,4 +1,3 @@
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
@@ -21,7 +20,8 @@ public class SqlServerModelLoader(DbSettings settings) : DbModelLoader(settings)
   /// <summary>Asynchronously reads the columns, with the identity flag from <c>COLUMNPROPERTY</c>, <c>(max)</c>
   /// folded into the type name, and the name of each default constraint.</summary>
   /// <remarks>SQL Server reports a <c>(max)</c> column with a length of -1, so the length is folded back into the
-  /// type name, where <c>(max)</c> belongs; a geography reports -1 too and takes no length. The default's own name
+  /// type name, where <c>(max)</c> belongs; a geography reports -1 too and takes no length. A vector reports its
+  /// bytes, eight and four a dimension, and is given its dimensions as its length. The default's own name
   /// comes from <c>sys.default_constraints</c>: the server generates it, and it is the only handle for dropping the
   /// default.</remarks>
   protected override Task<InfoTable> GetColumnsAsync(CancellationToken cancellation) =>
@@ -30,7 +30,8 @@ SELECT c.table_schema, c.table_name, c.column_name,
        CASE WHEN c.character_maximum_length = -1 AND c.data_type IN ('varchar', 'nvarchar', 'varbinary')
             THEN c.data_type + '(max)' ELSE c.data_type END AS data_type,
        c.is_nullable, c.column_default,
-       NULLIF(c.character_maximum_length, -1) AS character_maximum_length,
+       CASE WHEN c.data_type = 'vector' THEN (c.character_maximum_length - 8) / 4
+            ELSE NULLIF(c.character_maximum_length, -1) END AS character_maximum_length,
        c.numeric_precision, c.numeric_scale,
        COLUMNPROPERTY(OBJECT_ID(QUOTENAME(c.table_schema) + '.' + QUOTENAME(c.table_name)),
                       c.column_name, 'IsIdentity') AS is_identity,

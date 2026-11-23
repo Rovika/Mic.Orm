@@ -1,33 +1,25 @@
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
-using Mic.Modeling;
 
 namespace Mic.Orm.Model;
 
 /// <summary>Represents a transient entity the query engine asked for, for a query: a projection's rows, a grouping's
 /// keys, a bundle's slots or the rows of a JSON array.</summary>
 /// <remarks>Named, typed, nullable value members in a fixed order, with no key, table or record. Made in one call by
-/// <see cref="ILinqDataModel.CreateTransientEntity"/> and never changed after. A row of it is carried as an
-/// <c>IEntityData</c> (<see cref="Runtime.ProjectionData"/>) over the <see cref="EntityInfo"/>.</remarks>
+/// <see cref="ILinqDataModel.CreateTransientEntity"/> and never changed after. A row of it is a
+/// <see cref="Runtime.ProjectionData"/>.</remarks>
 public sealed class TransientEntityInfo : ILinqEntity {
-  public string Name => EntityInfo.Name;
-
-  /// <summary>Gets the structure a row of this entity is carried in.</summary>
-  public EntityInfo EntityInfo { get; }
+  public string Name { get; }
 
   public IReadOnlyList<TransientMemberInfo> Members { get; }
 
   public TransientEntityInfo(string name, IReadOnlyList<LinqMemberSpec> members) {
     ArgumentException.ThrowIfNullOrEmpty(name);
     ArgumentNullException.ThrowIfNull(members);
-    EntityInfo = new EntityInfo(name, EntityKind.ModelStructure);
+    Name = name;
     var made = new TransientMemberInfo[members.Count];
-    for (var i = 0; i < made.Length; i++) {
-      var spec = members[i];
-      var field = new Field(spec.Name, new ScalarTypeRef(spec.DataType), spec.IsNullable ? FieldFlags.Nullable : FieldFlags.None);
-      EntityInfo.AddField(field);
-      made[i] = new TransientMemberInfo(this, field, spec.DataType);
-    }
+    for (var i = 0; i < made.Length; i++)
+      made[i] = new TransientMemberInfo(this, members[i], i);
     Members = made;
   }
 
@@ -39,6 +31,17 @@ public sealed class TransientEntityInfo : ILinqEntity {
       if (string.Equals(member.Name, name, StringComparison.OrdinalIgnoreCase))
         return member;
     return null;
+  }
+
+  /// <summary>Gets a member by its exact name.</summary>
+  /// <param name="name">The member name.</param>
+  /// <returns>The member.</returns>
+  /// <exception cref="KeyNotFoundException">The entity has no member of that name.</exception>
+  public TransientMemberInfo GetMember(string name) {
+    foreach (var member in Members)
+      if (member.Name == name)
+        return member;
+    throw new KeyNotFoundException($"Member '{name}' not found on '{Name}'.");
   }
 
   public override string ToString() => Name;
@@ -54,24 +57,25 @@ public sealed class TransientEntityInfo : ILinqEntity {
   bool ILinqEntity.IsReadOnly => true;
 }
 
-/// <summary>Represents a value member of a <see cref="TransientEntityInfo"/>, over the field a row stores it under.
-///</summary>
+/// <summary>Represents a value member of a <see cref="TransientEntityInfo"/>.</summary>
 public sealed class TransientMemberInfo : ILinqEntityMember {
   public TransientEntityInfo Entity { get; }
 
-  /// <summary>Gets the field of the entity's structure that a row is read and written by.</summary>
-  public Field Field { get; }
+  public string Name { get; }
 
   public Type DataType { get; }
 
-  public string Name => Field.Name;
+  public bool IsNullable { get; }
 
-  public bool IsNullable => Field.Flags.HasFlag(FieldFlags.Nullable);
+  /// <summary>Gets the position of the member's value in a row of the entity.</summary>
+  public int DataIndex { get; }
 
-  internal TransientMemberInfo(TransientEntityInfo entity, Field field, Type type) {
+  internal TransientMemberInfo(TransientEntityInfo entity, LinqMemberSpec spec, int dataIndex) {
     Entity = entity;
-    Field = field;
-    DataType = type;
+    Name = spec.Name;
+    DataType = spec.DataType;
+    IsNullable = spec.IsNullable;
+    DataIndex = dataIndex;
   }
 
   public override string ToString() => $"{Entity.Name}.{Name}";
@@ -85,4 +89,6 @@ public sealed class TransientMemberInfo : ILinqEntityMember {
   ILinqReferenceInfo? ILinqEntityMember.ReferenceInfo => null;
 
   ILinqMemberListInfo? ILinqEntityMember.ListInfo => null;
+
+  bool ILinqEntityMember.IsOnDemand => false;
 }

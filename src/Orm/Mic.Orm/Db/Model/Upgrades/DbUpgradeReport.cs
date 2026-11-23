@@ -1,5 +1,3 @@
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Logging;
 
@@ -53,7 +51,7 @@ public sealed class DbUpgradeReport {
   /// as <c>sales.Person.Score</c>.</remarks>
   public void Add(Severity severity, string text, DbObjectDiffInfo? change = null) {
     var entry = new MessageLogEntry(default, Context?.Now ?? DateTime.UtcNow, text, severity,
-      change == null ? null : DbModelDefBuilder.GetPath(change.Target ?? change.Source));
+      change == null ? null : DbModelHelper.GetPath(change.Target ?? change.Source));
     _messages.Add(entry);
     Context?.Log(entry);
   }

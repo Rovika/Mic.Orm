@@ -41,7 +41,7 @@ public abstract partial class LinqTests {
         .Select(p => new { Price = 5.5m }).ExecuteUpdateAsync<Linq.IProduct>();
       Assert.AreEqual(2, repriced);
       // Where the index is a joined table, the simple form has no select to join it into and asks it by key.
-      if (Db.Provider.ServerKind == Mic.Modeling.Db.DbServerKind.SQLite)
+      if (Db.Provider.ServerKind == Mic.Orm.Db.DbServerKind.SQLite)
         StringAssert.Contains(session.LastCommands[^1].Sql, " IN (SELECT ");
       var prices = await products.Where(p => p.Rank >= firstRank).OrderBy(p => p.Rank).Select(p => p.Price)
         .ToListAsync();
@@ -63,7 +63,7 @@ public abstract partial class LinqTests {
       Assert.AreEqual(0, await products.Where(p => p.Rank >= firstRank).CountAsync());
 
       WriteTestTitle("refused: a rank in a mutation's own WHERE where the index is joined");
-      if (Db.Provider.ServerKind == Mic.Modeling.Db.DbServerKind.SQLite)
+      if (Db.Provider.ServerKind == Mic.Orm.Db.DbServerKind.SQLite)
         await Assert.ThrowsExactlyAsync<NotSupportedException>(() =>
           products.Where(p => FullText.Rank(p, "zirconium") > 0).ExecuteDeleteAsync());
     } finally {

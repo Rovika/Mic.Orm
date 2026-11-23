@@ -1,5 +1,6 @@
 using Mic.Linq;
 using Mic.Orm;
+using Mic.Orm.Db;
 
 namespace Mic.Tests.Orm.Db;
 
@@ -57,10 +58,17 @@ public abstract partial class DmlTests {
 
     // ----- a condition as an ordering term: a comparison, and an EXISTS ----------------------------------------------
     Assert.AreEqual("c,d,a,b", await ReadNamesAsync(mine.OrderBy(e => e.Count > 5).ThenBy(e => e.Text)));
-    var cities = await session.EntitySet<Dml.IAddress>().Where(a => a.City.StartsWith(tag))
-      .OrderByDescending(a => a.Residents.Any()).ThenBy(a => a.City).ToListAsync();
-    Assert.AreEqual(tag + "lived", cities[0].City);
-    Assert.AreEqual(2, cities.Count);
+    var byResidents = session.EntitySet<Dml.IAddress>().Where(a => a.City.StartsWith(tag))
+      .OrderByDescending(a => a.Residents.Any()).ThenBy(a => a.City);
+    // Db2 takes no sub-query over the outer row as an ordering term, and the refusal is the server's own.
+    if (Fixture.ServerKind == DbServerKind.Db2) {
+      var refused = await Assert.ThrowsExactlyAsync<DataAccessException>(() => byResidents.ToListAsync());
+      StringAssert.Contains(refused.Message, "SQL0206N");
+    } else {
+      var cities = await byResidents.ToListAsync();
+      Assert.AreEqual(tag + "lived", cities[0].City);
+      Assert.AreEqual(2, cities.Count);
+    }
 
     // ----- a condition selected, with a Boolean column inside it -----------------------------------------------------
     var selected = await mine.Select(e => new { e.Text, Both = e.Flag && e.Count > 5 })

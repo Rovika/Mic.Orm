@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using Mic.Linq.ExpressionTree;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 
 namespace Mic.Orm.Runtime;
 
@@ -69,7 +68,7 @@ public partial class EntitySession : IQueryExecutor {
       }
       case EntityRecord record:
         return record.EntityInstance;
-      case IReadOnlyList<IEntityData> rows:
+      case IReadOnlyList<ProjectionData> rows:
         ReplaceRecordsWithEntities(rows);
         return rows;
       default:
@@ -112,7 +111,7 @@ public partial class EntitySession : IQueryExecutor {
       IReadOnlyList<IGrouping<object?, object?>> groups) {
     var replaced = new List<IGrouping<object?, object?>>();
     foreach (var group in groups) {
-      if (group.Key is IEntityData keyRow)
+      if (group.Key is ProjectionData keyRow)
         ReplaceRecordsWithEntities([keyRow]);
       replaced.Add(new RowGrouping<object?, object?>(group.Key,
         [.. group.Select(row => row is EntityRecord record ? record.EntityInstance : row)]));
@@ -121,13 +120,13 @@ public partial class EntitySession : IQueryExecutor {
   }
 
   /// <summary>Replaces the records in the slots of projected rows with their entities, in place.</summary>
-  internal static void ReplaceRecordsWithEntities(IReadOnlyList<IEntityData> rows) {
+  internal static void ReplaceRecordsWithEntities(IReadOnlyList<ProjectionData> rows) {
     if (rows.Count == 0)
       return;
-    var fields = rows[0].EntityInfo.Fields;
+    var members = rows[0].Entity.Members;
     foreach (var row in rows)
-      foreach (var field in fields)
-        if (row.GetValue(field) is EntityRecord slot)
-          row.SetValue(field, slot.EntityInstance);
+      foreach (var member in members)
+        if (row.GetValue(member) is EntityRecord slot)
+          row.SetValue(member, slot.EntityInstance);
   }
 }

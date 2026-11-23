@@ -2,8 +2,6 @@ using Mic.Linq;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Sql;
@@ -132,6 +130,14 @@ public abstract partial class LinqTests {
     var seededItems = Enumerable.Range(1, LinqSeed.ProductCount).Where(Specified)
       .SelectMany(r => LinqSeed.SpecOf(r)!.Items.Select(i => (Rank: r, i.Sku, i.Qty))).ToList();
 
+    // DB2 SPREADS NO JSON ARRAY INTO ROWS: the query is refused at translation.
+    if (Fixture.ServerKind == DbServerKind.Db2) {
+      var refused = await Assert.ThrowsExactlyAsync<NotSupportedException>(() => session.EntitySet<Linq.IProduct>()
+        .SelectMany(p => p.Spec!.Items, (p, i) => new { p.Rank, i.Sku, i.Qty }).ToListAsync());
+      StringAssert.Contains(refused.Message, "JSON array");
+      return;
+    }
+
     WriteTestTitle("an array INSIDE the document, spread beside the row and projected with it");
     var spread = await session.EntitySet<Linq.IProduct>()
       .SelectMany(p => p.Spec!.Items, (p, i) => new { p.Rank, i.Sku, i.Qty })
@@ -193,6 +199,15 @@ public abstract partial class LinqTests {
       .Where(p => p.Spec != null && p.Rank <= 6).OrderBy(p => p.Rank)
       .Select(p => new { p.Rank, Tags = p.Spec!.Tags.Count() }).ToListAsync();
     CollectionAssert.AreEqual(new[] { 1, 2, 0, 1, 2, 0 }, tagged.Select(x => x.Tags).ToArray());
+    // Count as a property is the same count, in a select list and in a condition.
+    var taggedByProperty = await session.EntitySet<Linq.IProduct>()
+      .Where(p => p.Spec != null && p.Rank <= 6).OrderBy(p => p.Rank)
+      .Select(p => new { p.Rank, Tags = p.Spec!.Tags.Count }).ToListAsync();
+    CollectionAssert.AreEqual(new[] { 1, 2, 0, 1, 2, 0 }, taggedByProperty.Select(x => x.Tags).ToArray());
+    var twoTags = await session.EntitySet<Linq.IProduct>()
+      .Where(p => p.Spec != null && p.Rank <= 6 && p.Spec!.Tags.Count == 2)
+      .OrderBy(p => p.Rank).Select(p => p.Rank).ToListAsync();
+    CollectionAssert.AreEqual(new[] { 2, 5 }, twoTags.ToArray());
     var values = await session.EntitySet<Linq.IProduct>().Where(p => p.Rank == 5).SelectMany(p => p.Spec!.Tags).ToListAsync();
     CollectionAssert.AreEqual(new[] { "bulk", "fragile" }, values.ToArray(), "the spread alone is the values");
     var valuesByName = await session.ExecuteValuesAsync<string>(session.From("Product")

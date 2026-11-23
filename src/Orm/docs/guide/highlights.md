@@ -76,6 +76,12 @@ Direct support for the geographic types of the database servers: a `GeoPoint` me
 type, its spatial index, and a distance function translated to each server's own, for "within a radius" and
 "nearest first" queries. See [Geographic points](geo-points.md).
 
+### Vector search
+
+Direct support for the vector types of PostgreSQL with pgvector and of SQL Server 2025: an embedding stored in a
+`[Vector]` member, a distance function translated to each server's own for "nearest first" queries, and
+pgvector's HNSW index. See [Vector search](vector-search.md).
+
 ### Code first, automatic schema maintenance
 
 MIC ORM, like VITA before it, has a unique method of maintaining the database schema of an application under active

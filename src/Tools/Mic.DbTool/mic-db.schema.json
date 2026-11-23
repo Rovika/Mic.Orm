@@ -8,7 +8,7 @@
     "provider": {
       "description": "The kind of server.",
       "type": "string",
-      "enum": [ "Postgres", "MySql", "MsSql", "SQLite", "Oracle" ]
+      "enum": [ "Postgres", "MySql", "MsSql", "SQLite", "Oracle", "Db2" ]
     },
     "connectionString": {
       "description": "The connection string the database is read with: the value itself, or env:NAME for an environment variable holding it, or file:path for a file holding it, the path relative to this file. Keep a secret out of a file that goes into a repository.",

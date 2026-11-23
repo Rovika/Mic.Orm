@@ -365,9 +365,13 @@ public sealed class QueryModelBinder {
       case nameof(Queryable.Sum):
       case nameof(Queryable.Min):
       case nameof(Queryable.Max):
-      case nameof(Queryable.Average):
         // What the caller asked for where the typed path says; the selector's own type where it does not.
         call.DataType ??= call.ReturnType ?? (count > 1 ? call.GetLambda(1).Body.DataType : null);
+        return null;
+
+      case nameof(Queryable.Average):
+        // As above, but an average of integers is a double, as LINQ's is.
+        call.DataType ??= call.ReturnType ?? GetAverageType(count > 1 ? call.GetLambda(1).Body.DataType : null);
         return null;
 
       default:
@@ -465,4 +469,16 @@ public sealed class QueryModelBinder {
   /// themselves otherwise.</summary>
   private static ILinqEntity? GetAggregateRows(ILinqEntity? source) =>
     source is GroupShape group ? group.SourceEntity : source;
+
+  /// <summary>Gets the type of an average over values of a type: a double for an integer, nullable where the
+  /// integer is, and the type itself for any other.</summary>
+  private static Type? GetAverageType(Type? valueType) {
+    if (valueType == null)
+      return null;
+    var type = Nullable.GetUnderlyingType(valueType) ?? valueType;
+    var isInteger = type == typeof(int) || type == typeof(long) || type == typeof(short) || type == typeof(byte);
+    if (!isInteger)
+      return valueType;
+    return type == valueType ? typeof(double) : typeof(double?);
+  }
 }

@@ -6,8 +6,8 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
 
 namespace BeautyShop.Generated;
 

@@ -1,7 +1,6 @@
 using Mic.Common;
 using Mic.Linq;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
 
@@ -30,8 +29,6 @@ public class OracleSqlDialect : SqlDialect {
     // A private temporary table, 18c and on: its name carries the server's prefix, and it lives as long as the session
     // rather than the transaction.
     CreateTempTable = "CREATE PRIVATE TEMPORARY TABLE {0} (\n{1}\n) ON COMMIT PRESERVE DEFINITION";
-    // A private temporary table takes no constraint, NOT NULL included (ORA-14451).
-    TempTableNotNull = false;
     // A computed column is a virtual column; there is no stored kind.
     ComputedStorage = ComputedStorage.Virtual;
     // No type on a virtual column: the expression gives one, and a declared type JSON_VALUE's 4000 characters would not

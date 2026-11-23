@@ -4,8 +4,6 @@ using Mic.Common;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sql;
@@ -24,6 +22,9 @@ public sealed class SqlBuilder {
   // A character no SQL contains, bracketing a parameter's index in the buffer until the cut; a literal that holds it
   // is bound instead of written.
   const char Mark = '';
+
+  // A null as every dialect writes it, which says no type where nothing beside it gives one.
+  const string NullLiteral = "NULL";
 
   // The width a string column of a parameter's rows is declared with when nothing says: the widest bounded form every
   // server takes.
@@ -107,7 +108,11 @@ public sealed class SqlBuilder {
   private string WriteWith(IReadOnlyList<CteNode> ctes) {
     if (ctes.Count == 0)
       return "";
-    var sql = new StringBuilder(ctes.Any(c => c.IsRecursive) ? _dialect.WithRecursive : "WITH");
+    var recursive = ctes.FirstOrDefault(c => c.IsRecursive);
+    if (recursive != null && _dialect.WithRecursive == null)
+      throw new NotSupportedException($"A recursive query is not written for {_dbModel.Provider.ServerKind} — "
+        + $"'{recursive.CteName}' cannot be translated for this server.");
+    var sql = new StringBuilder(recursive != null ? _dialect.WithRecursive : "WITH");
     for (var i = 0; i < ctes.Count; i++) {
       var cte = ctes[i];
       if (i > 0)
@@ -236,7 +241,7 @@ public sealed class SqlBuilder {
       var pairing = (BinaryNode)join.Condition;
       Write(sql, pairing.Left);
       sql.Append(" IN ");
-      if (_dialect.DeleteSubQueryWrapped)
+      if (_dbModel.Provider.Supports(DbFeatures.DeleteSubQueryWrappedMySql))
         WriteBracketedSelect(sql, text => {
           text.Append("SELECT ");
           Write(text, pairing.Right);
@@ -368,12 +373,13 @@ public sealed class SqlBuilder {
 
   /// <summary>Gets the members a whole row comes back as, in the order the result description names them.</summary>
   private IReadOnlyList<ILinqEntityMember> GetRowMembers(ILinqEntity entity, RowSetNode resultSet) {
-    // A stored entity's whole row is its stored members whether it comes off its table or through a derived table.
+    // A stored entity's whole row is its stored members whether it comes off its table or through a derived table,
+    // without the on-demand ones.
     if (entity is not EntityTypeInfo typed || _dbModel.GetTable(typed) is not { } table)
       return entity.Members;
     var members = new List<ILinqEntityMember>();
     foreach (var member in typed.Members)
-      if (table.GetColumn(member) != null)
+      if (!member.IsOnDemand && table.GetColumn(member) != null)
         members.Add(member);
     return members;
   }
@@ -457,6 +463,13 @@ public sealed class SqlBuilder {
         // temp table where the rows are many.
         if (rows.Parameter != null)
           WriteSlot(sql, AddRowsPlaceholder(rows, columns, alias));
+        else if (IsArrayRows(rows))
+          sql.Append(string.Format(_dialect.ArrayRowsSource
+            ?? throw new NotSupportedException($"{_dbModel.Provider.ServerKind} has no array columns to read rows of."),
+            Render(rows.Document), alias, _dialect.Quote(columns[0].Name)));
+        else if (_dbModel.Provider.Supports(DbFeatures.JsonRowsOfParameterOnlyDb2))
+          throw new NotSupportedException($"{_dbModel.Provider.ServerKind} spreads no JSON array into rows — the "
+            + "items of a JSON member cannot be queried on this server.");
         else
           sql.Append(_dialect.JsonRowsSource(Render(rows.Document), columns, alias));
         return;
@@ -557,7 +570,7 @@ public sealed class SqlBuilder {
         var alias = column.Row.RowSet.Alias ?? throw new InvalidOperationException($"'{column.Row.RowSet}' has no alias.");
         // A column of a document's rows is spelled by the dialect.
         if (column.Row.RowSet is JsonRowsNode rows) {
-          sql.Append(_dialect.JsonRowsColumn(alias, FindRowsColumn(rows, column.Name!)));
+          sql.Append(GetRowsColumnRef(rows, alias, column.Name!));
           return;
         }
         sql.Append(alias).Append('.')
@@ -565,11 +578,12 @@ public sealed class SqlBuilder {
         return;
       }
 
-      // A geographic point selected as a value is read as well-known binary, as a whole row reads it.
-      case SelectedValueNode { Source: ColumnNode { Column: DbColumnInfo { IsGeoPoint: true } } point } selected: {
+      // A geographic point or a vector selected as a value is read in the form it travels in, as a whole row reads it.
+      case SelectedValueNode { Source: ColumnNode { Column: DbColumnInfo stored } source } selected
+          when _dialect.GetColumnReadFormat(stored) is { } readFormat: {
         var reference = new StringBuilder();
-        Write(reference, point);
-        sql.Append(string.Format(_dialect.GeoPointRead, reference)).Append(" AS ").Append(_dialect.Quote(selected.Name!));
+        Write(reference, source);
+        sql.Append(string.Format(readFormat, reference)).Append(" AS ").Append(_dialect.Quote(selected.Name!));
         return;
       }
 
@@ -580,7 +594,7 @@ public sealed class SqlBuilder {
         return;
 
       case SelectedValueNode selected:
-        Write(sql, selected.Source);
+        WriteUntypedValue(sql, selected.Source);
         sql.Append(" AS ").Append(_dialect.Quote(selected.Name!));
         return;
 
@@ -660,23 +674,29 @@ public sealed class SqlBuilder {
         sql.Append("CASE WHEN ");
         WriteCondition(sql, conditional.Children[0]);
         sql.Append(" THEN ");
-        WriteOperand(sql, conditional.Children[1]);
+        WriteUntypedValue(sql, conditional.Children[1]);
         sql.Append(" ELSE ");
-        WriteOperand(sql, conditional.Children[2]);
+        WriteUntypedValue(sql, conditional.Children[2]);
         sql.Append(" END");
+        return;
+
+      case NamedOpNode { OpType: NamedOpType.VectorDistance } distance:
+        WriteVectorDistance(sql, distance);
         return;
 
       // The dialect spells a named function.
       case NamedOpNode op: {
         var arguments = new string[op.ChildCount];
         for (var i = 0; i < arguments.Length; i++)
-          arguments[i] = RenderOperand(op.Children[i]);
+          arguments[i] = op.OpType == NamedOpType.Coalesce ? RenderUntypedValue(op.Children[i])
+            : RenderOperand(op.Children[i]);
         sql.Append(_dialect.BuildNamedOpText(op.OpType, arguments));
         return;
       }
 
       // A server whose EXISTS answers nothing over a document's rows read off the outer row is asked for their count.
-      case ExistsNode exists when _dialect.CountsJsonRowsForExists && exists.Select.Source is JsonRowsNode { IsCorrelated: true }:
+      case ExistsNode exists when _dbModel.Provider.Supports(DbFeatures.CountsJsonRowsForExistsMySql)
+          && exists.Select.Source is JsonRowsNode { IsCorrelated: true }:
         WriteBracketedSelect(sql, text => WriteSelect(text, exists.Select, asExists: true, asCount: true));
         sql.Append(" > 0");
         return;
@@ -690,6 +710,11 @@ public sealed class SqlBuilder {
       case AggregateValueNode aggregate:
         if (aggregate.Term == null) {
           sql.Append("COUNT(*)");
+          return;
+        }
+        if (aggregate.OpType == AggregateType.Average && _dialect.IntegerAverage != null
+            && IsIntegerTerm(aggregate.Term)) {
+          sql.Append(string.Format(_dialect.IntegerAverage, Render(aggregate.Term)));
           return;
         }
         sql.Append(aggregate.OpType switch {
@@ -747,7 +772,7 @@ public sealed class SqlBuilder {
     var alias = row.RowSet.Alias ?? throw new InvalidOperationException($"'{row.RowSet}' has no alias.");
     // A column of a document's rows is spelled by the dialect.
     if (row.RowSet is JsonRowsNode rows) {
-      sql.Append(_dialect.JsonRowsColumn(alias, FindRowsColumn(rows, member.Name)));
+      sql.Append(GetRowsColumnRef(rows, alias, member.Name));
       if (aliasAsMember)
         sql.Append(" AS ").Append(_dialect.Quote(member.Name));
       return;
@@ -755,10 +780,10 @@ public sealed class SqlBuilder {
     if (GetTable(row.RowSet) is { } table) {
       var column = FindColumn(table, member)
         ?? throw new InvalidOperationException($"'{row.Entity?.Name}.{member.Name}' has no column in '{table.Name}'.");
-      // A geographic point is read as well-known binary, under the member's name so that whatever reads the row by
-      // name finds it.
-      if (column.IsGeoPoint) {
-        sql.Append(string.Format(_dialect.GeoPointRead, alias + "." + column.QuotedName))
+      // A geographic point is read as well-known binary and a vector as an array of floats, under the member's name
+      // so that whatever reads the row by name finds it.
+      if (_dialect.GetColumnReadFormat(column) is { } readFormat) {
+        sql.Append(string.Format(readFormat, alias + "." + column.QuotedName))
           .Append(" AS ").Append(_dialect.Quote(member.Name));
         return;
       }
@@ -799,6 +824,18 @@ public sealed class SqlBuilder {
       sql.Append(')');
   }
 
+  /// <summary>Decides whether a term is an integer under whatever conversions the query wrote over it, which a
+  /// statement does not carry.</summary>
+  private static bool IsIntegerTerm(QueryNode term) {
+    var node = term;
+    while (node is ExpressionNode { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } conversion)
+      node = conversion.Children[0];
+    if (node.DataType == null)
+      return false;
+    var type = Nullable.GetUnderlyingType(node.DataType) ?? node.DataType;
+    return type == typeof(int) || type == typeof(long) || type == typeof(short) || type == typeof(byte);
+  }
+
   /// <summary>Writes an equality or an inequality one side of which is a parameter: the other side, then a slot
   /// rendered when the statement is bound, the operator and the parameter where it holds a value and the null test
   /// where it holds null.</summary>
@@ -813,7 +850,7 @@ public sealed class SqlBuilder {
     var (parameter, other) = node.Right is QueryParameterNode right ? (right, node.Left)
       : node.Left is QueryParameterNode left ? (left, node.Right)
       : (null, null);
-    if (parameter == null || other is QueryParameterNode or ConstantNode
+    if (parameter == null || other == null || other is QueryParameterNode or ConstantNode
         || parameter.Flags.HasFlag(NodeFlags.List) || IsPointValue(parameter))
       return false;
     var isEqual = node.NodeType == ExpressionType.Equal;
@@ -971,6 +1008,31 @@ public sealed class SqlBuilder {
       WriteSlot(sql, AddFixed(constant.Value, constant.DataType));
   }
 
+  /// <summary>Writes a value where nothing beside it gives it a type, a column of a select list, a result of a
+  /// <c>CASE</c> or an argument of <c>COALESCE</c>: a parameter or a null in the form the dialect has for one there,
+  /// anything else as an operand.</summary>
+  private void WriteUntypedValue(StringBuilder sql, QueryNode node) {
+    if (node is not (ConstantNode or QueryParameterNode) || IsPointValue(node)) {
+      WriteOperand(sql, node);
+      return;
+    }
+    var value = RenderOperand(node);
+    // A literal says its own type; a parameter and a null do not.
+    var clrType = node.DataType ?? (node as ConstantNode)?.Value?.GetType();
+    if (clrType == null || !value.Contains(Mark) && value != NullLiteral) {
+      sql.Append(value);
+      return;
+    }
+    clrType = Nullable.GetUnderlyingType(clrType) ?? clrType;
+    sql.Append(_dialect.BuildUntypedValue(value, clrType, _dbModel.Provider.TypeRegistry.MapType(clrType)));
+  }
+
+  private string RenderUntypedValue(QueryNode node) {
+    var sql = new StringBuilder();
+    WriteUntypedValue(sql, node);
+    return sql.ToString();
+  }
+
   /// <summary>Determines whether a node is a test the server evaluates, such as a comparison or an <c>EXISTS</c>,
   /// and not a Boolean value such as a column or a parameter.</summary>
   private static bool IsCondition(QueryNode node) => node switch {
@@ -992,6 +1054,40 @@ public sealed class SqlBuilder {
 
   private static bool IsBoolean(QueryNode node) =>
     node.DataType is { } type && (Nullable.GetUnderlyingType(type) ?? type) == typeof(bool);
+
+  /// <summary>Writes the distance between two vectors by the metric of the vector column among them, the cosine
+  /// metric where neither is one, with a bound vector spelled as the server's.</summary>
+  /// <exception cref="NotSupportedException">The dialect has no form for the distance by the metric.</exception>
+  private void WriteVectorDistance(StringBuilder sql, NamedOpNode node) {
+    var metric = (GetVectorMember(node.Children[0]) ?? GetVectorMember(node.Children[1]))?.VectorMetric
+      ?? VectorMetric.Cosine;
+    var format = _dialect.GetVectorDistanceFormat(metric) ?? throw new NotSupportedException(
+      $"{_dialect.GetType().Name} has no form for the {metric} distance between vectors — the query cannot be "
+      + "translated for this server.");
+    sql.Append(string.Format(format, RenderVector(node.Children[0]), RenderVector(node.Children[1])));
+  }
+
+  /// <summary>Renders an argument of a vector operation: a constant or a parameter bound and written as the
+  /// server's vector, anything else as it is.</summary>
+  /// <remarks>The array is bound as one value. Elsewhere an array is a list of values, which a server with no array
+  /// type gets written out one by one.</remarks>
+  private string RenderVector(QueryNode node) {
+    var placeholder = node switch {
+      QueryParameterNode parameter => AddArgument(parameter, parameter.DataType, isList: false),
+      ConstantNode constant => AddFixed(constant.Value, constant.DataType),
+      _ => null,
+    };
+    if (placeholder == null)
+      return RenderOperand(node);
+    var bound = new StringBuilder();
+    WriteSlot(bound, placeholder);
+    return string.Format(_dialect.VectorWrite, bound);
+  }
+
+  /// <summary>Gets the vector member a node reads the column of, or <see langword="null"/> for any other node.
+  /// </summary>
+  private static EntityMemberInfo? GetVectorMember(QueryNode node) =>
+    node is ColumnNode { Column: DbColumnInfo { Member: { IsVector: true } member } } ? member : null;
 
   /// <summary>Determines whether a constant or a parameter holds a geographic point.</summary>
   private static bool IsPointValue(QueryNode node) =>
@@ -1048,7 +1144,8 @@ public sealed class SqlBuilder {
   /// <summary>Adds the parameter the rows of a source are bound as: one string, the caller's rows serialized in the
   /// form the dialect's spelling reads, a list of records read by the members the columns are typed after.</summary>
   private SqlPlaceholder AddRowsPlaceholder(JsonRowsNode rows, IReadOnlyList<JsonRowsColumn> columns, string alias) {
-    var node = rows.Parameter;
+    // Called for rows that are a parameter, never for a document read off the outer row.
+    var node = rows.Parameter!;
     // The rows are bound once; a second source over them is read under its own alias.
     if (node.Name != null && _byName.TryGetValue(node.Name, out var existing))
       return Add(SqlPlaceholder.MakeRowsOccurrence(MakeNextName(), existing, columns, alias));
@@ -1081,6 +1178,18 @@ public sealed class SqlBuilder {
       return known;
     return _rowsColumns[rows] = MapRowsColumns(rows);
   }
+
+  /// <summary>Determines whether rows are the items of an array column, which the server spreads typed, rather than
+  /// the items of a JSON document.</summary>
+  private static bool IsArrayRows(JsonRowsNode rows) =>
+    rows.Document is ColumnNode { Column: DbColumnInfo { Member.ArrayItemType: not null } };
+
+  /// <summary>Gets the reference to a column of a document's rows: as the dialect converts it out of JSON, or as it
+  /// is where the rows are an array column's items.</summary>
+  private string GetRowsColumnRef(JsonRowsNode rows, string alias, string name) =>
+    IsArrayRows(rows)
+      ? $"{alias}.{_dialect.Quote(name)}"
+      : _dialect.JsonRowsColumn(alias, FindRowsColumn(rows, name));
 
   private JsonRowsColumn FindRowsColumn(JsonRowsNode rows, string name) {
     foreach (var column in GetRowsColumns(rows))

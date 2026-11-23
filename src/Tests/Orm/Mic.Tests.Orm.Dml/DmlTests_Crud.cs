@@ -1,5 +1,4 @@
 using Mic.Linq;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
@@ -525,6 +524,64 @@ public abstract partial class DmlTests {
   }
 
   [TestMethod]
+  public async Task Stub_AssignedWithoutALoad_SavesWhatWasAssigned() {
+    var document = await NewDocumentAsync("stub-" + Guid.NewGuid().ToString("N")[..6], 2);
+    Guid first, second;
+    await using (var writer = NewSession()) {
+      var lines = (await writer.GetEntityAsync<Dml.IDocument>(document)).Lines;
+      (first, second) = (lines[0].Id, lines[1].Id);
+      lines[0].Value = lines[1].Value = 3;
+      await writer.SaveChangesAsync();
+    }
+
+    // ----- a member that is not loaded is not judged: the line's name and its document are required ------------------
+    await using (var session = NewSession()) {
+      var stub = session.GetEntity<Dml.IDocLine>(first, LoadFlags.Stub);
+      stub.Value = 5;
+      await session.SaveChangesAsync();
+      var name = App.Model!.FindEntity("DocLine")!.GetMember("Name");
+      Assert.IsFalse(((EntityBase)stub).Record.Loaded.IsSet(name.DataIndex), "the save loaded nothing");
+    }
+    Assert.AreEqual(5, await ScalarAsync<int>("DocLine", "Value", first));
+    Assert.AreEqual("L0", await ScalarAsync<string>("DocLine", "Name", first), "the members not assigned stand");
+
+    // ----- a value equal to the one an empty slot holds is an assignment all the same ---------------------------------
+    await using (var session = NewSession()) {
+      var stub = session.GetEntity<Dml.IDocLine>(second, LoadFlags.Stub);
+      stub.Value = 0;
+      await session.SaveChangesAsync();
+    }
+    Assert.AreEqual(0, await ScalarAsync<int>("DocLine", "Value", second));
+  }
+
+  [TestMethod]
+  public async Task LoadedRecord_ReadsAMemberItLacksFromItsRow() {
+    await using var writer = NewSession();
+    var written = writer.NewEntity<Dml.IPerson>();
+    written.Id = Guid.NewGuid();
+    written.LastName = "Larsen";
+    written.Rank = 7;
+    await writer.SaveChangesAsync();
+
+    // A record that is loaded and holds some of its members, as a read that leaves a member out makes one.
+    await using var reader = NewSession();
+    var entity = App.Model!.FindEntity("Person")!;
+    var partial = new EntityRecord(entity, reader) { Status = EntityStatus.Loaded };
+    partial.SetLoadedValue(entity.GetMember("Id"), written.Id);
+    partial.SetLoadedValue(entity.GetMember("LastName"), "held");
+    reader.Attach(partial);
+    var person = (Dml.IPerson)partial.EntityInstance;
+
+    Assert.AreEqual(7, person.Rank, "the member it lacked is read from the row");
+    Assert.AreEqual("held", person.LastName, "the load does not replace a member the record held");
+    Assert.AreEqual(EntityStatus.Loaded, partial.Status);
+    Assert.IsTrue(partial.Modified.IsEmpty, "being filled in is not a change to save");
+    var load = reader.LastCommands.Single();
+    Assert.IsNull(person.Address);
+    Assert.AreSame(load, reader.LastCommands.Single(), "one load brought every member the row has");
+  }
+
+  [TestMethod]
   public async Task AReferenceToSomethingDELETEDButNotYetSavedIsStillThere() {
     // It is still tracked: deleting marks a record and queues a statement, it does not remove the object. Until the
     // save runs, the session holds it and a reference to it must find it rather than go looking in the database for
@@ -783,6 +840,16 @@ public abstract partial class DmlTests {
     Assert.AreEqual("b", await ReadNamesAsync(mine.Where(e => e.Token != same)));
     CollectionAssert.AreEqual(same, (await mine.Where(e => e.Token == same).ToListAsync()).Single().Token);
 
+    // ----- Db2 holds a binary with no size as a BLOB and compares it cut to the length of the value beside it: a
+    // row holding a longer one fails the statement (SQL0433N), so the answer hangs on the other rows of the table.
+    // The null test is sure -------------------------------------------------------------------------------------------
+    if (Fixture.ServerKind == DbServerKind.Db2) {
+      Assert.AreEqual("c", await ReadNamesAsync(mine.Where(e => e.Blob == null)));
+      byte[]? missing = null;
+      Assert.AreEqual("c", await ReadNamesAsync(mine.Where(e => e.Blob == missing)));
+      return;
+    }
+
     // ----- Oracle holds a binary with no size as a BLOB, which it compares with nothing. The value arrives whole
     // all the same, and the refusal is the server's own -----------------------------------------------------------
     if (Fixture.ServerKind == DbServerKind.Oracle) {
@@ -968,8 +1035,10 @@ public abstract partial class DmlTests {
     var update = reader.LastCommands.Single();
     StringAssert.Contains(update.Sql, "UPDATE", "the mutation was saved");
     // TWO PATHS, NOT THE DOCUMENT: the page size and the tags are written into the column by the server's own
-    // path-set function, whose name has `json` in it on every one of the five; the whole document is `= @p`.
-    StringAssert.Contains(update.Sql.ToLowerInvariant(), "json", "a change confined to paths writes the paths");
+    // path-set function, whose name has `json` in it on every one of the five; the whole document is `= @p`, which
+    // is what Db2, with no such function, is sent.
+    if (Fixture.ServerKind != DbServerKind.Db2)
+      StringAssert.Contains(update.Sql.ToLowerInvariant(), "json", "a change confined to paths writes the paths");
     Assert.AreEqual(EntityStatus.Loaded, ((EntityBase)first).Record.Status);
     await reader.SaveChangesAsync();
     Assert.AreSame(update, reader.LastCommands.Single(), "nothing changed since, so nothing was written");
@@ -1026,7 +1095,11 @@ public abstract partial class DmlTests {
     row.Blob = [1];
     row.Settings = new Dml.EveryTypeSettings { Theme = "plain", PageSize = 1, Tags = [] };
     row.RawJson = "this is not a document";
-    await Assert.ThrowsAsync<DataAccessException>(() => session.SaveChangesAsync());
+    // Db2 has no test for JSON to put into a check, so the column takes any text.
+    if (Fixture.ServerKind == DbServerKind.Db2)
+      await session.SaveChangesAsync();
+    else
+      await Assert.ThrowsAsync<DataAccessException>(() => session.SaveChangesAsync());
 
     // The same row with a document is taken, and so is one with none.
     row.RawJson = """{"n": 1}""";

@@ -21,5 +21,9 @@ public enum DataRequestFlags {
   /// <summary>The query is answered from the entity cache: a read by key of a cached entity, or a shape with a
   /// <see cref="DataRequest.CacheQuery"/>. Set by the executor's preparation.</summary>
   CanRunInCache = 1 << 2,
+
+  /// <summary>A row read for a record the session tracks replaces the record's values in the members that were not
+  /// assigned. Set for a read under a lock.</summary>
+  RefreshTracked = 1 << 4,
 }
 

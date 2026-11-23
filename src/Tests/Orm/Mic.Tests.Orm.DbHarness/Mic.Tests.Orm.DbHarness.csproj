@@ -32,6 +32,16 @@
 		<ProjectReference Include="..\..\..\Orm\Mic.Orm.Db.MySql\Mic.Orm.Db.MySql.csproj" />
 		<ProjectReference Include="..\..\..\Orm\Mic.Orm.Db.SqlServer\Mic.Orm.Db.SqlServer.csproj" />
 		<ProjectReference Include="..\..\..\Orm\Mic.Orm.Db.Oracle\Mic.Orm.Db.Oracle.csproj" />
+		<ProjectReference Include="..\..\..\Orm\Mic.Orm.Db.Db2\Mic.Orm.Db.Db2.csproj" />
+	</ItemGroup>
+
+	<!-- The Db2 provider carries no driver: IBM ships one package per operating system, and the application
+	     references the one of the system it runs on. Here the application is the suites, which get it through this
+	     project, the native clidriver folder with it. -->
+	<ItemGroup>
+		<PackageReference Include="Net.IBM.Data.Db2" Version="10.0.0.400" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+		<PackageReference Include="Net.IBM.Data.Db2-lnx" Version="10.0.0.400" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+		<PackageReference Include="Net.IBM.Data.Db2-osx" Version="10.0.0.400" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
 	</ItemGroup>
 
 </Project>

@@ -21,6 +21,7 @@
         { "choice": "MySql", "description": "MySQL" },
         { "choice": "MsSql", "description": "SQL Server" },
         { "choice": "Oracle", "description": "Oracle" },
+        { "choice": "Db2", "description": "Db2 for Linux and Windows" },
         { "choice": "SQLite", "description": "SQLite: a file, nothing to install" }
       ]
     },
@@ -35,6 +36,7 @@
     "MySql": { "type": "computed", "value": "(provider == \"MySql\")" },
     "MsSql": { "type": "computed", "value": "(provider == \"MsSql\")" },
     "Oracle": { "type": "computed", "value": "(provider == \"Oracle\")" },
+    "Db2": { "type": "computed", "value": "(provider == \"Db2\")" },
     "SQLite": { "type": "computed", "value": "(provider == \"SQLite\")" },
     "lowerName": {
       "type": "derived",

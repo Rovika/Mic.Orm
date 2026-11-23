@@ -1,6 +1,7 @@
 using System.Collections;
+using Mic.Common;
 using Mic.Linq.Nodes;
-using Mic.Modeling;
+using Mic.Linq.Translation;
 using Mic.Orm.Model;
 
 namespace Mic.Orm.Runtime;
@@ -27,6 +28,66 @@ public partial class EntitySession {
     // The reader attaches what it materialises, and this record is tracked under that key, so it is filled in place.
     if (await LoadRecordAsync(key) == null)
       record.MarkFullyLoaded();
+  }
+
+  /// <summary>Asynchronously loads an on-demand member of a record from its row, and of every other tracked record
+  /// of the entity that lacks it where the smart load is on, in one statement by their keys.</summary>
+  /// <param name="record">The record the member was asked of.</param>
+  /// <param name="member">The on-demand member to load.</param>
+  /// <remarks>A record that holds the member, or is new or deleted, is not loaded.</remarks>
+  internal Task LoadMemberAsync(EntityRecord record, EntityMemberInfo member) {
+    ArgumentNullException.ThrowIfNull(record);
+    ArgumentNullException.ThrowIfNull(member);
+    if (!IsSmartLoading)
+      return LoadMemberAsync([record], member);
+    var others = FindTrackedRecords(record.Entity, r =>
+      !ReferenceEquals(r, record) && r.Status is EntityStatus.Loaded or EntityStatus.Modified
+      && !r.Loaded.IsSet(member.DataIndex));
+    return LoadMemberAsync(TakeOwnersBatch(others, record), member);
+  }
+
+  /// <summary>Asynchronously loads an on-demand member of the given records from their rows, a statement for each
+  /// <see cref="MaxSmartLoadBatchSize"/> of them.</summary>
+  /// <param name="records">The records, of one entity.</param>
+  /// <param name="member">The on-demand member to load.</param>
+  /// <remarks>A record that holds the member is left as it is, and one that is new or deleted is not loaded. A
+  /// record with no row has the member marked loaded, so the question is asked once.</remarks>
+  internal async Task LoadMemberAsync(IReadOnlyList<EntityRecord> records, EntityMemberInfo member) {
+    ArgumentNullException.ThrowIfNull(records);
+    ArgumentNullException.ThrowIfNull(member);
+    var entity = member.Entity!;
+    if (entity.PrimaryKey is not { } key)
+      return;
+    var lacking = new Dictionary<EntityKey, EntityRecord>();
+    foreach (var record in records)
+      if (record.Status is EntityStatus.Loaded or EntityStatus.Modified or EntityStatus.Stub
+          && !record.Loaded.IsSet(member.DataIndex) && !record.PrimaryKey.IsEmpty)
+        lacking[record.PrimaryKey] = record;
+    // A document read as the type another member names needs that member in the row beside it.
+    EntityMemberInfo[] read = member.JsonDiscriminatorMember is { } discriminator ? [member, discriminator] : [member];
+    var keyMembers = key.MembersExpanded;
+
+    foreach (var batch in lacking.Values.Chunk(MaxSmartLoadBatchSize)) {
+      // The records are the argument; the engine reads each one's key when the statement is bound.
+      var rows = await Database.RequestExecutor.ExecuteAsync(new DataRequest(this,
+        new QueryInfo(member.LoadCacheKey, [batch]),
+        new QueryTreeBuilder(() => MemberQueryHelper.BuildMembersByKeysQuery(entity, read)),
+        $"load {entity.Name}.{member.Name}")) as IReadOnlyList<ProjectionData> ?? [];
+      foreach (var row in rows) {
+        var values = new object?[keyMembers.Count];
+        for (var i = 0; i < values.Length; i++)
+          values[i] = row.GetValue(keyMembers[i].Member.Name);
+        if (!lacking.TryGetValue(new EntityKey(key, values), out var found) || found.Loaded.IsSet(member.DataIndex))
+          continue;
+        if (member.IsJson)
+          JsonMemberHelper.SetLoadedDocument(found, member, row.GetValue(member.Name));
+        else
+          found.SetLoadedValue(member, row.GetValue(member.Name));
+      }
+    }
+    foreach (var rowless in lacking.Values)
+      if (!rowless.Loaded.IsSet(member.DataIndex))
+        rowless.SetLoadedValue(member, null);
   }
 
   /// <summary>Asynchronously reads one row by a key value and returns its tracked record; <see langword="null"/>
@@ -63,7 +124,7 @@ public partial class EntitySession {
       list.SetItems(records.Where(r => r.Status != EntityStatus.Deleted));
       return;
     }
-    var rows = await RunListLoadAsync(member, manyOwners: false, arguments) as IReadOnlyList<IEntityData> ?? [];
+    var rows = await RunListLoadAsync(member, manyOwners: false, arguments) as IReadOnlyList<ProjectionData> ?? [];
     list.SetLinkRecordPairs(EntityListHelper.GetLinkRecordPairs(rows));
   }
 
@@ -111,10 +172,14 @@ public partial class EntitySession {
       await LoadChainAsync(loaded, chain, at + 1, includes, runs, depth);
   }
 
-  /// <summary>Asynchronously loads one member of the rows, a reference's targets or a list's rows, and returns the
-  /// rows it holds for the next hop.</summary>
+  /// <summary>Asynchronously loads one member of the rows, a reference's targets, a list's rows or an on-demand
+  /// member's values, and returns the rows it holds for the next hop; none for an on-demand member.</summary>
   private async Task<IReadOnlyList<EntityRecord>> LoadIncludedMemberAsync(IReadOnlyList<EntityRecord> records, EntityMemberInfo member) {
     var loaded = new List<EntityRecord>();
+    if (member.IsOnDemand) {
+      await LoadMemberAsync(records, member);
+      return loaded;
+    }
     if (member.Kind == MemberKind.Reference) {
       var seen = new HashSet<EntityRecord>(ReferenceEqualityComparer.Instance);
       foreach (var record in records)

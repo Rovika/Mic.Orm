@@ -1,11 +1,10 @@
 using System.Data.Common;
 using Mic.Linq;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Readers;
+using Mic.Orm.Logging;
 using Mic.Orm.Runtime;
 
 namespace Mic.Tests.Orm.Db;
@@ -197,9 +196,16 @@ public abstract partial class DmlTests {
   }
 
   /// <summary>Three rows of one integer column, however this server spells that.</summary>
-  string ThreeRows => Db.Provider.ServerKind == DbServerKind.Postgres
-    ? "SELECT n FROM generate_series(1, 3) AS n"
-    : "SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3";
+  string ThreeRows => Db.Provider.ServerKind switch {
+    DbServerKind.Postgres => "SELECT n FROM generate_series(1, 3) AS n",
+    DbServerKind.Db2 => "SELECT n FROM (VALUES 1, 2, 3) AS t (n)",
+    _ => "SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3",
+  };
+
+  /// <summary>One row of one integer column: a select reads a table always on Db2.</summary>
+  string OneRow => Db.Provider.ServerKind == DbServerKind.Db2
+    ? "SELECT 42 AS n FROM SYSIBM.SYSDUMMY1"
+    : "SELECT 42 AS n";
 
   /// <summary>What comes back from a reader, and the two regressions that made it come back DEAD.</summary>
   /// <remarks>Both were the same mistake: the executor handed the caller a LIVE reader, and then something closed it —
@@ -218,7 +224,7 @@ public abstract partial class DmlTests {
     var session = NewSession();
     var executor = session.Database.RequestExecutor;
     var first = (InfoTable)(await executor.ExecuteAsync(new DataRequest(session, ThreeRows, [], DbExecutionType.Reader)))!;
-    var second = (InfoTable)(await executor.ExecuteAsync(new DataRequest(session, "SELECT 42 AS n", [], DbExecutionType.Reader)))!;
+    var second = (InfoTable)(await executor.ExecuteAsync(new DataRequest(session, OneRow, [], DbExecutionType.Reader)))!;
     Assert.AreEqual(3, first.Rows.Count);
     Assert.AreEqual(1, second.Rows.Count);
 
@@ -254,7 +260,7 @@ public abstract partial class DmlTests {
     Assert.IsNotNull(session.Connection);
     Assert.IsNull(session.Connection.ActiveReader, "a reader was left open");
 
-    var second = await executor.ExecuteAsync(new DataRequest(session, "SELECT 42 AS n", [], DbExecutionType.Reader));
+    var second = await executor.ExecuteAsync(new DataRequest(session, OneRow, [], DbExecutionType.Reader));
     Assert.AreEqual(1, ((InfoTable)second!).Rows.Count);
   }
 

@@ -30,3 +30,9 @@ public sealed class SqlServer_DmlTests : DmlTests {
 public sealed class Oracle_DmlTests : DmlTests {
   protected override ProviderFixture Fixture { get; } = new OracleFixture();
 }
+
+// Db2 runs after the others too: its container is the largest of the set.
+[TestClass, DoNotParallelize]
+public sealed class Db2_DmlTests : DmlTests {
+  protected override ProviderFixture Fixture { get; } = new Db2Fixture();
+}

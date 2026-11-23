@@ -1,5 +1,4 @@
 using System.Text;
-using Mic.Modeling;
 
 namespace Mic.Orm.Logging;
 
@@ -43,9 +42,6 @@ public abstract class LogEntry {
   /// <remarks>Called on a background thread, at flush.</remarks>
   public abstract void WriteText(StringBuilder text);
 
-  /// <summary>Flattens the entry into the rendered form that can be stored or sent.</summary>
-  /// <returns>The rendered item.</returns>
-  public LogItem ToLogItem() => new(Severity, Time, ToString(), Location);
 
   public override string ToString() {
     var text = new StringBuilder();

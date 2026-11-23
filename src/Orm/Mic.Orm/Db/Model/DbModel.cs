@@ -1,6 +1,4 @@
 using Mic.Linq.Model;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Model;
 namespace Mic.Orm.Db.Model;
@@ -18,11 +16,6 @@ public class DbModel : DbModelObject, ILinqDataModel {
   /// was read from a database.</summary>
   public EntityAppModel? EntityModel { get; set; }
 
-  /// <summary>Gets or sets the mapping of entities to tables and members to columns, in a form that can be stored,
-  /// sent and shown. The value is <see langword="null"/> for an introspected model.</summary>
-  /// <remarks>The runtime does not read this; <see cref="GetTable"/> and
-  /// <see cref="DbTableInfo.GetColumn(EntityMemberInfo)"/> are the per-statement lookups.</remarks>
-  public ModelMappingDef? EntityModelMapping { get; set; }
 
   /// <summary>Gets the report of mapping the entity model to this database, empty for an introspected model.</summary>
   public DbModelBuildReport BuildReport { get; } = new();

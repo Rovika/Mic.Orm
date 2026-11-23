@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/Orm/">
+    <Project Path="Orm/Mic.Orm.Db.Db2/Mic.Orm.Db.Db2.csproj" />
     <Project Path="Orm/Mic.Orm.Db.MySql/Mic.Orm.Db.MySql.csproj" />
     <Project Path="Orm/Mic.Orm.Db.Oracle/Mic.Orm.Db.Oracle.csproj" />
     <Project Path="Orm/Mic.Orm.Db.Postgres/Mic.Orm.Db.Postgres.csproj" />
@@ -20,7 +21,7 @@
     <Project Path="Shared/Mic.Common/Mic.Common.csproj" />
     <Project Path="Shared/Mic.Emit/Mic.Emit.csproj" />
     <Project Path="Shared/Mic.Linq/Mic.Linq.csproj" />
-    <Project Path="Shared/Mic.Modeling/Mic.Modeling.csproj" />
+
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/Mic.DbTool/Mic.DbTool.csproj" />

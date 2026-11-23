@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
@@ -79,11 +78,24 @@ public sealed class EntitySourceWriter {
 
   private void SelectEntities() {
     var usedNames = new HashSet<string>(StringComparer.Ordinal);
-    foreach (var table in _model.Tables)
-      if (!table.IsTemporary && !IsDbInfoTable(table) && IsSelected(table.Schema.Name, table.Name))
-        _entities.Add(new EntitySpec(table.Name, table.Schema, table.Columns, usedNames, _entities.Count) {
-          Table = table, Keys = table.Keys, RefConstraints = table.RefConstraints,
-        });
+    foreach (var table in _model.Tables) {
+      if (table.IsTemporary || IsDbInfoTable(table) || !IsSelected(table.Schema.Name, table.Name))
+        continue;
+      // An entity has a primary key. A table that declares none is written with a unique key standing in for it,
+      // or is left out.
+      var standInKey = table.PrimaryKey == null ? FindStandInKey(table) : null;
+      if (table.PrimaryKey == null && standInKey == null) {
+        _warnings.Add($"{table.Name}: the table has no primary key and no unique key over required columns; "
+          + "not written.");
+        continue;
+      }
+      if (standInKey != null)
+        _warnings.Add($"{table.Name}: the table has no primary key; its unique key {standInKey.Name} is written "
+          + "as the primary key.");
+      _entities.Add(new EntitySpec(table.Name, table.Schema, table.Columns, usedNames, _entities.Count) {
+        Table = table, Keys = table.Keys, RefConstraints = table.RefConstraints, StandInKey = standInKey,
+      });
+    }
     foreach (var view in _model.Views)
       if (IsSelected(view.Schema.Name, view.Name))
         _entities.Add(new EntitySpec(view.Name, view.Schema, view.Columns, usedNames, _entities.Count) {
@@ -95,6 +107,16 @@ public sealed class EntitySourceWriter {
     _entities.Sort((x, y) => x.IsView != y.IsView ? x.IsView.CompareTo(y.IsView) : string.CompareOrdinal(x.Name, y.Name));
     OrderViewsByDependency();
   }
+
+  /// <summary>Finds the unique key that stands in for the primary key a table does not declare: one whose columns
+  /// are all required, the one of fewest columns, the first by name among those.</summary>
+  /// <returns>The key, or <see langword="null"/> if the table has no such key.</returns>
+  private static DbKeyInfo? FindStandInKey(DbTableInfo table) =>
+    table.Keys
+      .Where(k => k.IsUnique && !k.IsForeignKey && k.Filter == null && k.Columns.Count > 0
+        && k.Columns.All(c => !c.Column.IsNullable))
+      .OrderBy(k => k.Columns.Count).ThenBy(k => k.Name, StringComparer.Ordinal)
+      .FirstOrDefault();
 
   /// <summary>Moves a view after every view its select names, keeping the name order otherwise; a cycle, which a
   /// server would not have allowed, leaves the order as it is.</summary>
@@ -169,6 +191,12 @@ public sealed class EntitySourceWriter {
 
   private void BuildReferences(EntitySpec entity) {
     foreach (var constraint in entity.RefConstraints) {
+      // It constrains nothing, and written as a reference it would key the entity on itself.
+      if (IsSelfKeyReference(constraint)) {
+        _warnings.Add($"{entity.Name}: the foreign key {constraint.Name} points from a key to the same key; "
+          + "not written.");
+        continue;
+      }
       var target = _entities.FirstOrDefault(e => ReferenceEquals(e.Table, constraint.ToTable));
       if (target == null) {
         _outsideReferences++;
@@ -183,6 +211,15 @@ public sealed class EntitySourceWriter {
       foreach (var keyColumn in constraint.FromKey.Columns)
         _referenceByColumn[keyColumn.Column] = reference;
     }
+  }
+
+  /// <summary>Decides whether a foreign key points from a key to that same key, column for column.</summary>
+  private static bool IsSelfKeyReference(DbRefConstraintInfo constraint) {
+    if (!ReferenceEquals(constraint.FromKey.Table, constraint.ToTable))
+      return false;
+    var fromColumns = constraint.FromKey.Columns.Select(c => c.Column);
+    var toColumns = constraint.ToKey.Columns.Select(c => c.Column);
+    return fromColumns.SequenceEqual(toColumns);
   }
 
   /// <summary>Derives a reference member's name from its column: the target key's member name cut off the end, as
@@ -261,8 +298,12 @@ public sealed class EntitySourceWriter {
       clrType = typeof(byte[]);
       typeDef = _registry.MapType(clrType, column.Size)?.TypeDef ?? typeDef;
     }
-    if (clrType == null || column.IsComputed) {
-      var reason = clrType == null ? $"type '{column.TypeSpec}' maps to no CLR type" : "it is computed by the server";
+    // A vector with no dimensions stated is no member: [Vector] wants the number.
+    var isVector = typeDef?.SpecialType == DbSpecialType.Vector;
+    if (clrType == null || column.IsComputed || isVector && column.Size <= 0) {
+      var reason = clrType == null ? $"type '{column.TypeSpec}' maps to no CLR type"
+        : column.IsComputed ? "it is computed by the server"
+        : "it is a vector with no dimensions";
       entity.SkippedColumns.Add($"{column.Name}: {reason}; not written.");
       _warnings.Add($"{entity.Name}.{column.Name}: {reason}; not written.");
       return null;
@@ -273,7 +314,7 @@ public sealed class EntitySourceWriter {
     if (jsonCheck != null)
       _jsonChecks.Add(jsonCheck);
     var isJson = jsonCheck != null || typeDef?.SpecialType == DbSpecialType.Json;
-    AddTypeAttributes(member, column, typeDef, clrType, isJson);
+    AddTypeAttributes(member, column, typeDef, clrType, isJson, isVector);
     if (column.IsIdentity)
       member.Attributes.Add("Identity");
     else if (column.DbFlags.HasFlag(DbColumnFlags.RowVersion))
@@ -287,15 +328,17 @@ public sealed class EntitySourceWriter {
   /// column name where it is not the member's, the type spec where the registry would choose another, the default.
   /// </summary>
   /// <remarks>A JSON column gets <c>[Json]</c> in place of a length and a type spec, since the attribute alone
-  /// decides its type.</remarks>
+  /// decides its type; a vector column gets <c>[Vector]</c> so.</remarks>
   private void AddTypeAttributes(MemberSpec member, DbColumnInfo column, DbTypeDef? typeDef, Type clrType,
-      bool isJson) {
+      bool isJson, bool isVector) {
     // A length belongs to text and binary; a Guid in raw(16) or binary(16) has none to state.
     var lengthy = clrType == typeof(string) || clrType == typeof(byte[]);
     var sized = lengthy && typeDef is { TakesSize: true } && column.Size > 0;
     var unlimited = lengthy && typeDef is { IsUnlimited: true };
     if (isJson)
       member.Attributes.Add("Json");
+    else if (isVector)
+      member.Attributes.Add(GetVectorAttribute(column));
     else if (sized)
       member.Attributes.Add($"Size({column.Size})");
     else if (unlimited)
@@ -311,12 +354,23 @@ public sealed class EntitySourceWriter {
         arguments.Add($"Scale = {column.Scale}");
     }
     var expected = _registry.MapType(clrType, sized ? column.Size : 0, column.Precision, column.Scale, unlimited);
-    if (!isJson && !string.Equals(expected?.TypeSpec, column.TypeSpec, StringComparison.OrdinalIgnoreCase))
+    if (!isJson && !isVector && !string.Equals(expected?.TypeSpec, column.TypeSpec, StringComparison.OrdinalIgnoreCase))
       arguments.Add($"DbTypeSpec = {Quote(column.TypeSpec)}");
     if (column.DefaultExpression != null)
       arguments.Add($"Default = {Quote(column.DefaultExpression)}");
     if (arguments.Count > 0)
       member.Attributes.Add($"Column({string.Join(", ", arguments)})");
+  }
+
+  /// <summary>Gets the <c>[Vector]</c> attribute of a vector column: its dimensions, and the metric of the vector
+  /// index over it where there is one and the metric is not the default.</summary>
+  private static string GetVectorAttribute(DbColumnInfo column) {
+    var metric = column.Table?.Keys
+      .FirstOrDefault(k => k.VectorMetric != null && k.Columns is [{ Column: var indexed }] && indexed == column)
+      ?.VectorMetric;
+    return metric is null or VectorMetric.Cosine
+      ? $"Vector({column.Size})"
+      : $"Vector({column.Size}, Metric = VectorMetric.{metric})";
   }
 
   /// <summary>Finds the check the ORM made for a JSON member whose column is text on this server.</summary>
@@ -350,6 +404,7 @@ public sealed class EntitySourceWriter {
     if (clrType == typeof(GeoPoint))
       _usesGeoPoint = true;
     var name = clrType == typeof(byte[]) ? "byte[]"
+      : clrType.IsArray ? GetTypeName(clrType.GetElementType()!, nullable: false) + "[]"
       : _keywords.TryGetValue(clrType, out var keyword) ? keyword
       : clrType.FullName!;
     return nullable ? name + "?" : name;
@@ -368,6 +423,7 @@ public sealed class EntitySourceWriter {
 
   private void BuildKeys(EntitySpec entity) {
     foreach (var key in entity.Keys.Where(k => !k.IsForeignKey)) {
+      var isPrimary = key.IsPrimaryKey || ReferenceEquals(key, entity.StandInKey);
       var members = key.Columns.Select(c => GetKeyMemberName(entity, c.Column)).ToList();
       var owner = key.Columns.Count == 1 && !key.Columns[0].Descending
         ? entity.Members.FirstOrDefault(m => m.Name == members[0]) : null;
@@ -382,14 +438,17 @@ public sealed class EntitySourceWriter {
         var included = string.Join(",", key.IncludedColumns.Select(c => GetKeyMemberName(entity, c)));
         arguments.Add($"IncludeMembers = {Quote(included)}");
       }
-      if (!key.IsPrimaryKey && key.IndexType != _settings.Provider.DefaultIndexType && key.IndexType != DbIndexType.Default)
+      // A vector index states no access method: an index over a vector member is the server's vector index.
+      if (!isPrimary && key.IndexType != _settings.Provider.DefaultIndexType && key.IndexType != DbIndexType.Default
+          && key.VectorMetric == null)
         arguments.Add($"IndexType = DbIndexType.{key.IndexType}");
-      var attribute = GetKeyAttributeName(key) + (arguments.Count == 0 ? "" : $"({string.Join(", ", arguments)})");
-      if (key.IsPrimaryKey)
+      var attributeName = isPrimary ? "PrimaryKey" : GetIndexAttributeName(key);
+      var attribute = attributeName + (arguments.Count == 0 ? "" : $"({string.Join(", ", arguments)})");
+      if (isPrimary)
         entity.KeyMemberNames.AddRange(members);
       if (owner == null)
         entity.EntityAttributes.Add(attribute);
-      else if (!key.IsPrimaryKey)
+      else if (!isPrimary)
         owner.Attributes.Add(attribute);
       else {
         owner.Attributes.Insert(0, attribute);
@@ -423,11 +482,9 @@ public sealed class EntitySourceWriter {
     return _policy.GetForeignKeyMemberName(reference.Name, _memberNames[reference.Constraint.ToKey.Columns[position].Column]);
   }
 
-  /// <summary>Gets the attribute for a key's flags; clustering is written for an index and not for a primary key,
-  /// whose placement is the server's default.</summary>
-  private static string GetKeyAttributeName(DbKeyInfo key) {
-    if (key.IsPrimaryKey)
-      return "PrimaryKey";
+  /// <summary>Gets the attribute for the flags of a key that is not the primary key; clustering is written for an
+  /// index and not for a primary key, whose placement is the server's default.</summary>
+  private static string GetIndexAttributeName(DbKeyInfo key) {
     var clustered = key.Flags.HasFlag(KeyFlags.Clustered);
     return key.IsUnique
       ? clustered ? "UniqueClusteredIndex" : "Unique"
@@ -514,8 +571,8 @@ public sealed class EntitySourceWriter {
     text.AppendLine("using System.Collections.Generic;");
     if (_usesGeoPoint)
       text.AppendLine("using Mic.Common;");
-    text.AppendLine("using Mic.Modeling.Db;");
     text.AppendLine("using Mic.Orm;");
+    text.AppendLine("using Mic.Orm.Db;");
     text.AppendLine();
     text.AppendLine($"namespace {_options.Namespace};");
 
@@ -694,6 +751,10 @@ public sealed class EntitySourceWriter {
     public IReadOnlyList<DbRefConstraintInfo> RefConstraints { get; init; } = [];
     public DbViewInfo? View { get; init; }
     public bool IsView => View != null;
+
+    /// <summary>The unique key written as the primary key of a table that declares none; <see langword="null"/>
+    /// where the table has its own.</summary>
+    public DbKeyInfo? StandInKey { get; init; }
 
     /// <summary>The view's defining select as the server reported it, cut to the select; <see langword="null"/>
     /// for a table or where the server gave none.</summary>

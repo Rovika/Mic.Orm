@@ -3,7 +3,6 @@ using Mic.Linq;
 using Mic.Linq.ExpressionTree;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
-using Mic.Modeling;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
@@ -107,9 +106,9 @@ public static class EntitySessionHelper {
   /// <returns>A task that represents the asynchronous operation. The task result contains the rows, which have no
   /// identity and are not tracked.</returns>
   /// <remarks>A projection of one expression is run with <see cref="ExecuteValuesAsync{T}"/>.</remarks>
-  public static async Task<IReadOnlyList<IEntityData>> ExecuteRowsAsync(this IEntitySession session, QueryNode query,
+  public static async Task<IReadOnlyList<ProjectionData>> ExecuteRowsAsync(this IEntitySession session, QueryNode query,
       params object?[] arguments) =>
-    await RunAsync(session, query, arguments) as List<IEntityData> ?? [];
+    await RunAsync(session, query, arguments) as List<ProjectionData> ?? [];
 
   /// <summary>Asynchronously runs a projection of one expression and returns its column.</summary>
   /// <typeparam name="T">The type of the values.</typeparam>

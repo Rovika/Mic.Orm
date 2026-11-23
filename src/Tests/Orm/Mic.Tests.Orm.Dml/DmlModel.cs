@@ -1,8 +1,9 @@
 using Mic.Common;
 using Mic.Linq;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm;
+using Mic.Orm.Db;
+using Mic.Orm.Db.Db2;
 using Mic.Orm.Db.MySql;
 using Mic.Orm.Db.Oracle;
 using Mic.Orm.Db.Postgres;
@@ -347,6 +348,7 @@ public static class Dml {
     [SqlExpression(DbServerKind.MsSql, "{Price} * {Qty}")]
     [SqlExpression(DbServerKind.Oracle, "{Price} * {Qty}")]
     [SqlExpression(DbServerKind.SQLite, "{Price} * {Qty}")]
+    [SqlExpression(DbServerKind.Db2, "{Price} * {Qty}")]
     int Total { get; }
   }
 
@@ -390,6 +392,27 @@ public static class Dml {
     [RowVersion] int Version { get; set; }
 
     [OrderBy("Name")] IList<IDocLine> Lines { get; }
+  }
+
+  /// <summary>What an editor keeps of an article, held as a JSON document.</summary>
+  public class ArticleNotes {
+    public string Editor { get; set; } = "";
+    public int Revision { get; set; }
+  }
+
+  /// <summary>An article with three heavy members, left out of a read of the entity: its text, which is required,
+  /// its summary, which is not, and its notes, a JSON document.</summary>
+  public interface IArticle {
+    [PrimaryKey, Auto(AutoType.NewGuid)] Guid Id { get; set; }
+    [Size(60)] string Title { get; set; }
+    int Rank { get; set; }
+    [OnDemand, Unlimited] string Body { get; set; }
+    [OnDemand, Size(200)] string? Summary { get; set; }
+    [OnDemand, Json] ArticleNotes? Notes { get; set; }
+    [OnDemand] byte[]? Picture { get; set; }
+
+    /// <summary>The article that continues this one: a reference to follow to the other's text.</summary>
+    IArticle? Sequel { get; set; }
   }
 
   public interface IDocLine {
@@ -463,7 +486,7 @@ public class DmlApp : EntityApp {
     var dialects = new (DbServerKind Kind, SqlDialect Dialect)[] {
       (DbServerKind.Postgres, new PostgresSqlDialect()), (DbServerKind.MySql, new MySqlSqlDialect()),
       (DbServerKind.MsSql, new SqlServerSqlDialect()), (DbServerKind.Oracle, new OracleSqlDialect()),
-      (DbServerKind.SQLite, new SqliteSqlDialect()),
+      (DbServerKind.SQLite, new SqliteSqlDialect()), (DbServerKind.Db2, new Db2SqlDialect()),
     };
     var byServer = new Dictionary<DbServerKind, string>();
     foreach (var (kind, dialect) in dialects)
@@ -471,11 +494,11 @@ public class DmlApp : EntityApp {
     return byServer;
   }
 
-  /// <summary>The dialects a function's body is written for: the three servers with table-valued functions.
+  /// <summary>The dialects a function's body is written for: the four servers with table-valued functions.
   /// </summary>
   private static readonly (DbServerKind Kind, SqlDialect Dialect)[] FunctionDialects = [
     (DbServerKind.Postgres, new PostgresSqlDialect()), (DbServerKind.MsSql, new SqlServerSqlDialect()),
-    (DbServerKind.Oracle, new OracleSqlDialect()),
+    (DbServerKind.Oracle, new OracleSqlDialect()), (DbServerKind.Db2, new Db2SqlDialect()),
   ];
 
   /// <summary>The body of the function of the people at or above a rank, the parameter spelled as each server reads
@@ -530,7 +553,7 @@ public class DmlApp : EntityApp {
       typeof(ITenant), typeof(Dml.IBooking),
       typeof(Dml.IDocument), typeof(Dml.IDocLine), typeof(Dml.IReceipt), typeof(Dml.IShipment), typeof(Dml.IShipmentItem),
       typeof(Dml.IMarked), typeof(Dml.ILineItem), typeof(Dml.IPlace), typeof(Dml.IPersonAbove), typeof(Dml.IRankCount),
-      typeof(Dml.IBookmark));
+      typeof(Dml.IBookmark), typeof(Dml.IArticle));
     // The discriminators by NAME, for a column that is an enum: the builder converts them to it.
     module.MapJsonTypes<Dml.Shape>(("Circle", typeof(Dml.Circle)), ("Square", typeof(Dml.Square)));
     // The sequence `IReceipt.Number` draws from, declared with a start and a step the test can see.

@@ -1,6 +1,6 @@
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 
 namespace Mic.Orm.Model;
 

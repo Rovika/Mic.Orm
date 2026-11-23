@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Mic.Linq.Model;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Upgrades;
 using Mic.Orm.Db.Provider;

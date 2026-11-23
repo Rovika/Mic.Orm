@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
@@ -49,7 +48,8 @@ public class OracleProvider : DbProvider {
     | DbFeatures.IdentityCarriedInBatch        // RETURNING … INTO a bind of the PL/SQL block
     | DbFeatures.RowLocks                      // FOR UPDATE on the root select; SERIALIZABLE for a consistent read
     | DbFeatures.NoRowLimitWithLock            // FOR UPDATE over OFFSET … FETCH is ORA-02014
-    | DbFeatures.BulkInsert;                   // one insert, its parameters bound as arrays
+    | DbFeatures.BulkInsert                    // one insert, its parameters bound as arrays
+    | DbFeatures.NoTempTableNotNullOracle;     // a private temporary table takes no constraint (ORA-14451)
 
   /// <summary>Gets the case the server folds an unquoted identifier to, which for Oracle is upper case.</summary>
   /// <remarks>MIC quotes every identifier it writes, so the folding matters for the names a database MIC did not

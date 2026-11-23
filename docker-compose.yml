@@ -21,8 +21,11 @@
 # between them.
 services:
   postgres:
-    # The PostGIS build of postgres:17, for the geographic point type; the data volume is the same.
-    image: postgis/postgis:17-3.5
+    # The PostGIS build of postgres:17, for the geographic point type, with pgvector added for the vector type; the
+    # data volume is the same. BUILT, NOT PULLED: `docker/postgres/Dockerfile` adds the pgvector package on top of
+    # `postgis/postgis:17-3.5`. `docker compose build postgres` after changing the Dockerfile.
+    build: ./docker/postgres
+    image: mic-test-postgres:17-postgis-pgvector
     container_name: mic-test-postgres
     environment:
       POSTGRES_USER: mic
@@ -68,7 +71,7 @@ services:
   # top of it. `docker compose --profile heavy build sqlserver` after changing the Dockerfile.
   sqlserver:
     build: ./docker/sqlserver
-    image: mic-test-sqlserver:2022-fts
+    image: mic-test-sqlserver:2025-fts
     container_name: mic-test-sqlserver
     profiles: ["heavy"]
     environment:
@@ -120,9 +123,48 @@ services:
       retries: 40
       start_period: 60s
 
+  # OPT-IN, behind a profile of its own, so that the `heavy` profile does not start it beside SQL Server and Oracle:
+  # the three together want more memory than a laptop's Docker has.
+  #
+  #   docker compose --profile db2 up -d --wait db2
+  #   MIC_TEST_VENDORS=db2 dotnet test
+  #   docker compose stop db2              # keep it: see below
+  #
+  # KEPT, where the other servers are made anew: the first start creates the instance and two databases and takes
+  # eight to nine minutes; a start with them there takes under a minute. So the databases are on a named volume, and
+  # the suite, which works in schemas it makes and drops, leaves them as they were. MICTEST is the suite's; SAMPLE
+  # is IBM's sample database, the one the guide's page on an existing Db2 database reads.
+  #
+  # `LICENSE: accept` accepts IBM's licence for Db2 Community Edition, as `ACCEPT_EULA` above accepts Microsoft's.
+  # The server needs privileged mode.
+  db2:
+    image: icr.io/db2_community/db2:12.1.5.0
+    container_name: mic-test-db2
+    profiles: ["db2"]
+    privileged: true
+    environment:
+      LICENSE: accept
+      DB2INST1_PASSWORD: mic
+      DBNAME: mictest
+      SAMPLEDB: "true"
+      ARCHIVE_LOGS: "false"
+      AUTOCONFIG: "false"
+    ports:
+      - "50000:50000"
+    volumes:
+      - mic-test-db2data:/database
+    healthcheck:
+      test: ["CMD-SHELL", "su - db2inst1 -c 'db2 connect to MICTEST' > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 20s
+      retries: 30
+      start_period: 600s
+
 # The sample database's storage. Declared so it is NAMED — an anonymous volume is discarded by a prune without
 # saying what it belonged to, which is how the sample was lost once already.
 volumes:
+  mic-test-db2data:
+    name: mic-test-db2data
   mic-test-pgdata:
     # NAMED EXPLICITLY, or compose prefixes it with the project — `mic_mic-test-pgdata` — and the name a person types
     # in `docker volume` is not the name in this file. Still compose-managed, so `down -v` still removes it.

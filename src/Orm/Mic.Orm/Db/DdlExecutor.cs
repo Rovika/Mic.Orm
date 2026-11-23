@@ -1,6 +1,5 @@
 using System.Data.Common;
 using System.Diagnostics;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Upgrades;
 using Mic.Orm.Logging;
 

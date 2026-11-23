@@ -1,6 +1,6 @@
 using System.Reflection;
 using Mic.Common;
-using Mic.Modeling.Db;
+using Mic.Orm.Db;
 
 namespace Mic.Orm.Model.Construction;
 
@@ -183,6 +183,7 @@ internal class ReferenceBuilder(BuilderContext context) {
         Size = targetMember.Size,
         Precision = targetMember.Precision,
         Scale = targetMember.Scale,
+        DbTypeSpec = targetMember.DbTypeSpec,
         OwnerReference = member,
         // Renaming the reference renames this column, so its old names follow, or the upgrade drops and adds it.
         OldNames = [.. member.OldNames.Select(old =>

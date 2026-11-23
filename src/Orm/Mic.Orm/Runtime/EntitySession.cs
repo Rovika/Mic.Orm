@@ -5,7 +5,6 @@ using Mic.Linq.ExpressionTree;
 using Mic.Linq;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sql;
@@ -148,7 +147,9 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
       if (!HasOpenTransaction)
         await BeginTransactionAsync(forUpdate ? IsolationLevel.ReadCommitted : Database.Provider.SnapshotIsolationLevel,
           commitOnSave: true);
-      var locked = await Database.RequestExecutor.ExecuteAsync(new DataRequest(this, key, forUpdate)) as EntityRecord;
+      var request = new DataRequest(this, key, forUpdate);
+      request.Flags |= DataRequestFlags.RefreshTracked;
+      var locked = await Database.RequestExecutor.ExecuteAsync(request) as EntityRecord;
       return locked == null ? null! : (TEntity)(object)locked.EntityInstance;
     }
 
@@ -381,9 +382,18 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
 
   /// <summary>Puts a record under the session's care and returns the record that counts: the one already tracked
   /// under that identity where there is one, otherwise the given one.</summary>
-  /// <remarks>A tracked stub is filled from the given record and keeps its identity. A record discarded in favour of
-  /// the tracked one is not announced as loaded.</remarks>
-  public EntityRecord Attach(EntityRecord record) {
+  /// <remarks>A tracked stub is filled from the given record and keeps its identity. A tracked record that is loaded
+  /// or modified takes the members it does not hold. A record discarded in favour of the tracked one is not
+  /// announced as loaded.</remarks>
+  public EntityRecord Attach(EntityRecord record) => Attach(record, refreshTracked: false);
+
+  /// <summary>Puts a record under the session's care and returns the record that counts, the tracked one also taking
+  /// the given record's values over its own where asked.</summary>
+  /// <param name="record">The record to track.</param>
+  /// <param name="refreshTracked"><see langword="true"/> to have a tracked record that is loaded or modified take
+  /// the given record's values in the members that were not assigned; <see langword="false"/> to have it take only
+  /// the members it does not hold.</param>
+  internal EntityRecord Attach(EntityRecord record, bool refreshTracked) {
     ArgumentNullException.ThrowIfNull(record);
     var key = record.PrimaryKey;
     if (key.IsEmpty)
@@ -393,11 +403,13 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
     if (_entityTracker.TryGetTracked(key) is { } existing) {
       if (ReferenceEquals(existing, record))
         return record;
-      if (existing.Status == EntityStatus.Stub && record.Status != EntityStatus.Stub) {
+      if (record.Status == EntityStatus.Stub)
+        return existing;
+      if (existing.Status == EntityStatus.Stub) {
         existing.FillFrom(record);
         NotifyLoaded(existing, record.Status);
-        return existing;
-      }
+      } else if (existing.Status is EntityStatus.Loaded or EntityStatus.Modified)
+        existing.MergeFrom(record, refreshTracked);
       return existing;
     }
 
@@ -410,7 +422,7 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
   /// rules, and leaves the faults on the record.</summary>
   /// <returns><see langword="true"/> if the record is valid; otherwise, <see langword="false"/>.</returns>
   /// <remarks>The model checks a value missing where it cannot be and a string longer than its size. A deleted
-  /// record is not checked.</remarks>
+  /// record is not checked, nor a member the record does not hold, which stays as the row has it.</remarks>
   public bool ValidateRecord(EntityRecord record) {
     ArgumentNullException.ThrowIfNull(record);
     record.ClearValidationFaults();
@@ -456,7 +468,7 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
     // One slot comes back as a list of values, several as rows; an empty list is a row that is not there.
     var first = (result as System.Collections.IList) is { Count: > 0 } list ? list[0] : null;
     for (var i = 0; i < referrers.Count; i++) {
-      var answer = first is IEntityData row ? row.GetValue(MemberQueryHelper.GetReferrerSlotName(i)) : first;
+      var answer = first is ProjectionData row ? row.GetValue(MemberQueryHelper.GetReferrerSlotName(i)) : first;
       if (answer != null && Convert.ToBoolean(answer, CultureInfo.InvariantCulture))
         blocking.Add(referrers[i].Entity);
     }
@@ -552,8 +564,10 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
 
   internal void SetLastCommands(IReadOnlyList<DataCommandSnapshot> commands) => LastCommands = commands;
 
-  /// <summary>Fills a stub from its row. Called from a property getter, so it is synchronous.</summary>
-  internal void LoadRecord(EntityRecord record) => RunSync(() => LoadRecordAsync(record));
+  /// <summary>Loads a member a record does not hold: the member alone where it is on demand, the record's row
+  /// otherwise. Called from a property getter, so it is synchronous.</summary>
+  internal void LoadValue(EntityRecord record, EntityMemberInfo member) =>
+    RunSync(() => member.IsOnDemand ? LoadMemberAsync(record, member) : LoadRecordAsync(record));
 
   /// <summary>Fills a list member from its rows. Called from the list's accessors, so it is synchronous.</summary>
   internal void LoadList(IMemberEntityList list) => RunSync(() => LoadListAsync(list));
@@ -733,6 +747,8 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
   /// <remarks>An empty string counts as missing for a required text member. A string over its size is trimmed where
   /// the member says <c>AutoTrim</c>, and a fault otherwise.</remarks>
   private static void ValidateValue(EntityRecord record, EntityMemberInfo member) {
+    if (!record.Loaded.IsSet(member.DataIndex))
+      return;
     var value = record.GetRawValue(member);
     if (!member.IsNullable) {
       var missing = member.DataType == typeof(string) ? string.IsNullOrEmpty(value as string) : value == null;
@@ -764,7 +780,7 @@ public partial class EntitySession : IEntitySession, IAsyncDisposable, IDisposab
     if (record.GetRawValue(member) != null)
       return;
     foreach (var keyMember in reference.FromKey.MembersExpanded)
-      if (record.GetRawValue(keyMember.Member) != null)
+      if (record.GetRawValue(keyMember.Member) != null || !record.Loaded.IsSet(keyMember.Member.DataIndex))
         return;
     record.AddValidationFault(new ClientFault(record, ClientFaultCodes.ValueMissing, member.Name,
       $"'{member.Name}' is required."));

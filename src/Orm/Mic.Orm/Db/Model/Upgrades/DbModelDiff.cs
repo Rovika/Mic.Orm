@@ -1,4 +1,3 @@
-using Mic.Modeling.Db;
 
 namespace Mic.Orm.Db.Model.Upgrades;
 

@@ -1,6 +1,5 @@
 using Mic.Linq;
 using Mic.Linq.Nodes;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Provider;
 using Mic.Orm.Db.Sql;
@@ -21,9 +20,14 @@ public class SqlServerSqlDialect : SqlDialect {
     // Used where the target has no json type; a null document passes, since ISJSON of null is null.
     JsonTextCheck = "ISJSON({0}) = 1";
     ConditionAsValue = "CAST(CASE WHEN {0} THEN 1 ELSE 0 END AS BIT)";
+    // AVG over an integer column is an integer.
+    IntegerAverage = "AVG(CAST({0} AS FLOAT))";
     GeoPointRead = "{0}.STAsBinary()";
     GeoPointWrite = "geography::STGeomFromWKB({0}, 4326)";
     FunctionTemplates[NamedOpType.GeoDistance] = "{0}.STDistance({1})";
+    VectorCosineDistance = "VECTOR_DISTANCE('cosine', {0}, {1})";
+    VectorEuclideanDistance = "VECTOR_DISTANCE('euclidean', {0}, {1})";
+    VectorDotProductDistance = "VECTOR_DISTANCE('dot', {0}, {1})";
     LateralJoin = "CROSS APPLY {0}";
     // A temp table is any table whose name starts with #; it lives as long as the session.
     CreateTempTable = CreateTable;

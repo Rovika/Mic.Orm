@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>Mic.Orm.Db.MySql</id>
+    <version>0.10.0-preview.1</version>
+    <authors>Rovika Software, Inc</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <projectUrl>https://github.com/Rovika/Mic.Orm</projectUrl>
+    <description>The MySQL provider of MIC ORM, over MySqlConnector.</description>
+    <copyright>Rovika Software, Inc</copyright>
+    <tags>orm database linq postgresql sqlserver mysql oracle sqlite</tags>
+    <repository type="git" url="https://github.com/Rovika/Mic.Orm" commit="7b9b3de184966252491ddceda3cfc7002404ee58" />
+    <dependencies>
+      <group targetFramework="net10.0">
+        <dependency id="Mic.Orm" version="0.10.0-preview.1" exclude="Build,Analyzers" />
+        <dependency id="MySqlConnector" version="2.6.2" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

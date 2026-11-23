@@ -2,8 +2,6 @@ using Mic.Linq;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Sql;
@@ -106,7 +104,7 @@ public abstract partial class LinqTests {
       4);
     Assert.AreEqual(4, rows.Count);
     CollectionAssert.AreEqual(new[] { "Rank", "Category", "Doubled" },
-      rows[0].EntityInfo.Fields.Select(f => f.Name).ToArray());
+      rows[0].Entity.Members.Select(m => m.Name).ToArray());
     for (var i = 0; i < rows.Count; i++) {
       var rank = i + 1;
       Assert.AreEqual(rank, rows[i].GetValue("Rank"));
@@ -143,7 +141,7 @@ public abstract partial class LinqTests {
         g.Max(p => p.Member("Rank")).As("Newest"),
       ]));
     CollectionAssert.AreEqual(new[] { "Category", "Products", "Total", "Newest" },
-      perCategory[0].EntityInfo.Fields.Select(f => f.Name).ToArray());
+      perCategory[0].Entity.Members.Select(m => m.Name).ToArray());
     Assert.AreEqual(LinqSeed.Categories.Length, perCategory.Count);
     foreach (var row in perCategory) {
       var ranks = Ranks(r => LinqSeed.CategoryOf(r) == (string)row.GetValue("Category")!);
@@ -377,6 +375,25 @@ public abstract partial class LinqTests {
 
     IQueryable<Linq.IProduct> Low() => session.EntitySet<Linq.IProduct>().Where(p => p.Rank <= 10);
     IQueryable<Linq.IProduct> Even() => session.EntitySet<Linq.IProduct>().Where(p => p.Rank % 2 == 0);
+
+    // DB2 HOLDS UNLIMITED TEXT AND A JSON MEMBER AS A CLOB, which it compares with nothing: a union, an intersect
+    // or an except over whole products is the server's to refuse. UNION ALL compares nothing, and the three over
+    // columns that are not a CLOB run.
+    if (Fixture.ServerKind == DbServerKind.Db2) {
+      var refused = await Assert.ThrowsExactlyAsync<DataAccessException>(() => Low().Union(Even()).ToListAsync());
+      StringAssert.Contains(refused.Message, "SQL0134N");
+      var kept = await Low().Concat(Even()).ToListAsync();
+      Assert.AreEqual(Ranks(r => r <= 10).Count + Ranks(r => r % 2 == 0).Count, kept.Count);
+      IQueryable<int> LowRanks() => Low().Select(p => p.Rank);
+      IQueryable<int> EvenRanks() => Even().Select(p => p.Rank);
+      Assert.AreEqual(Ranks(r => r <= 10 || r % 2 == 0).Count,
+        (await LowRanks().Union(EvenRanks()).ToListAsync()).Count);
+      Assert.AreEqual(Ranks(r => r <= 10 && r % 2 == 0).Count,
+        (await LowRanks().Intersect(EvenRanks()).ToListAsync()).Count);
+      Assert.AreEqual(Ranks(r => r <= 10 && r % 2 != 0).Count,
+        (await LowRanks().Except(EvenRanks()).ToListAsync()).Count);
+      return;
+    }
 
     WriteTestTitle("union, and union all");
     // `Union` discards duplicates and `Concat` keeps them — the whole difference between UNION and UNION ALL, and

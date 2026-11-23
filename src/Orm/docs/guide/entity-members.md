@@ -29,6 +29,8 @@ refining it:
 | `byte[]` | unbounded binary; with `[Size(n)]`, the server's bounded binary type where it has one, see [Binary members on Oracle](servers.md#binary-members-on-oracle) |
 | `GeoPoint` | the server's geographic point type; see [Geographic points](geo-points.md) |
 | any serialisable type with `[Json]` | a JSON column; see [JSON](json.md) |
+| `T[]` or `List<T>` of a scalar, on PostgreSQL | an array column; see [Array columns on PostgreSQL](postgres-arrays.md) |
+| `float[]` with `[Vector(n)]`, on PostgreSQL and SQL Server 2025 | a vector column; see [Vector search](vector-search.md) |
 
 A member whose type is another entity interface is a reference, a foreign-key column; a getter-only `IList<T>`
 is a list with no column. Both are below: [Entity reference members](#entity-reference-members), [Entity list
@@ -214,6 +216,8 @@ loading](smart-loading.md).
 * `[NoUpdate]`: the application sets the member at creation and never again; an update does not write it.
 * `[ReadOnly]`: the application never sets it.
 * `[Secret]`: the member is written but never read back in a `SELECT`, such as a password hash.
+* `[OnDemand]`: no read of the entity brings the member's column; the member is loaded when it is first read.
+  For a large column, a text or a picture: see [On-demand members](on-demand-members.md).
 
 ## Generated values
 

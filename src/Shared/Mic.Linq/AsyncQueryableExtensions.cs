@@ -239,6 +239,41 @@ public static class AsyncQueryableExtensions {
       CancellationToken cancellationToken = default) =>
     Run<T, TResult>(source, GetSelectorAggregateMethod<T, TResult>(nameof(Queryable.Average)), selector, cancellationToken);
 
+  /// <summary>Asynchronously returns the average of the integers a selector produces over the rows of the query, as
+  /// a double-precision number.</summary>
+  /// <typeparam name="T">The type of the rows.</typeparam>
+  /// <param name="source">The query to run.</param>
+  /// <param name="selector">A function to apply to each row.</param>
+  /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+  /// <returns>A task that represents the asynchronous operation. The task result contains the average, with its
+  /// fraction.</returns>
+  public static Task<double> AverageAsync<T>(this IQueryable<T> source, Expression<Func<T, int>> selector,
+      CancellationToken cancellationToken = default) =>
+    RunAverage<T, int, double>(source, selector, cancellationToken);
+
+  /// <summary>Asynchronously returns the average of the nullable integers a selector produces over the rows of the
+  /// query, as a double-precision number.</summary>
+  /// <inheritdoc cref="AverageAsync{T}(IQueryable{T}, Expression{Func{T, int}}, CancellationToken)"/>
+  /// <returns>A task that represents the asynchronous operation. The task result contains the average of the
+  /// values that are not null, or <see langword="null"/> if there is none.</returns>
+  public static Task<double?> AverageAsync<T>(this IQueryable<T> source, Expression<Func<T, int?>> selector,
+      CancellationToken cancellationToken = default) =>
+    RunAverage<T, int?, double?>(source, selector, cancellationToken);
+
+  /// <summary>Asynchronously returns the average of the 64-bit integers a selector produces over the rows of the
+  /// query, as a double-precision number.</summary>
+  /// <inheritdoc cref="AverageAsync{T}(IQueryable{T}, Expression{Func{T, int}}, CancellationToken)"/>
+  public static Task<double> AverageAsync<T>(this IQueryable<T> source, Expression<Func<T, long>> selector,
+      CancellationToken cancellationToken = default) =>
+    RunAverage<T, long, double>(source, selector, cancellationToken);
+
+  /// <summary>Asynchronously returns the average of the nullable 64-bit integers a selector produces over the rows
+  /// of the query, as a double-precision number.</summary>
+  /// <inheritdoc cref="AverageAsync{T}(IQueryable{T}, Expression{Func{T, int?}}, CancellationToken)"/>
+  public static Task<double?> AverageAsync<T>(this IQueryable<T> source, Expression<Func<T, long?>> selector,
+      CancellationToken cancellationToken = default) =>
+    RunAverage<T, long?, double?>(source, selector, cancellationToken);
+
   // ----- plumbing -------------------------------------------------------------------------------------------------------
 
   private static Task<TResult> Run<T, TResult>(IQueryable<T> source, MethodInfo method,
@@ -255,12 +290,29 @@ public static class AsyncQueryableExtensions {
       Expression.Call(method, source.Expression, Expression.Quote(selector)), cancellationToken);
   }
 
+  /// <summary>Runs an average whose result is of another type than the values averaged, as an average of integers
+  /// is.</summary>
+  private static Task<TResult> RunAverage<T, TValue, TResult>(IQueryable<T> source,
+      Expression<Func<T, TValue>> selector, CancellationToken cancellationToken) {
+    ArgumentNullException.ThrowIfNull(source);
+    ArgumentNullException.ThrowIfNull(selector);
+    var method = GetSelectorAggregateMethod<T, TValue>(nameof(Queryable.Average));
+    return RunScalar<TResult>(GetExecutor(source),
+      Expression.Call(method, source.Expression, Expression.Quote(selector)), cancellationToken);
+  }
+
   /// <summary>Runs an aggregate and returns its one value as the caller's type, or the default value of
   /// <typeparamref name="TResult"/> if the aggregate produced <see langword="null"/>.</summary>
   private static async Task<TResult> RunScalar<TResult>(IQueryExecutor executor, Expression expression,
       CancellationToken cancellationToken) {
     var result = await executor.ExecuteAsync(expression, cancellationToken);
-    return result is TResult typed ? typed : default!;
+    if (result is TResult typed)
+      return typed;
+    if (result == null)
+      return default!;
+    // A number of another type than the caller's is converted, not dropped.
+    var resultType = Nullable.GetUnderlyingType(typeof(TResult)) ?? typeof(TResult);
+    return (TResult)Convert.ChangeType(result, resultType, System.Globalization.CultureInfo.InvariantCulture);
   }
 
   /// <summary>Runs a query cut to one row and returns that row, or throws when there is not exactly one.</summary>

@@ -35,13 +35,17 @@ await session.SaveChangesAsync();                                               
 ```
 
 The locked read always goes to the server, past the session's tracked record and the cache, and refreshes the
-tracked record with what the server holds under the lock. The lock needs a transaction: with none open, the
-session begins one, and the next save commits it, written rows or not; inside a transaction the caller began,
-the lock holds until the caller commits or rolls back.
+tracked record with what the server holds under the lock. A member the application assigned before the read
+keeps the assigned value, and a list member already loaded is not read again. An
+[on-demand member](on-demand-members.md) loaded before the read is dropped, and loads again when it is next
+read. The lock needs a transaction:
+with none open, the session begins one, and the next save commits it, written rows or not; inside a
+transaction the caller began, the lock holds until the caller commits or rolls back.
 
 To lock the rows a query finds, pass `QueryOptions.LockForUpdate`, inside a transaction the caller begins:
 `session.EntitySet<IStockItem>(QueryOptions.LockForUpdate).Where(…)`. The query must be a plain select over a
-table: not a set operation, a condition or a mutation.
+table: not a set operation, a condition or a mutation. It refreshes the tracked records of its rows as the
+read by key does.
 
 The statement is the server's own: `FOR UPDATE` on PostgreSQL, MySQL and Oracle, `WITH (UPDLOCK, ROWLOCK)` on SQL
 Server. SQLite has no row locks: the options are accepted, the rows are read plainly and no transaction is begun.

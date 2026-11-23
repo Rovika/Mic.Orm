@@ -43,6 +43,15 @@ public enum MemberFlags {
   /// <remarks>A session keeps the value such a column had in its row when the column is first changed, so that a
   /// save knows which unique values it frees.</remarks>
   InUniqueKey = 1 << 7,
+
+  /// <summary>A vector column, from <c>[Vector(n)]</c>: the member's value is an array of <c>n</c> floats held in
+  /// the server's vector type.</summary>
+  /// <remarks>The number of dimensions is the member's size.</remarks>
+  Vector = 1 << 8,
+
+  /// <summary>A column left out of a read of the entity, from <c>[OnDemand]</c>.</summary>
+  /// <remarks>A record read from the database does not hold the member until it is asked for.</remarks>
+  OnDemand = 1 << 9,
 }
 
 /// <summary>Specifies how a list is served: by a foreign key on the target itself, or on a link entity between the
@@ -71,7 +80,7 @@ public enum EntityTypeFlags {
   ReferencesIdentity = 1 << 3,
 }
 
-// `KeyFlags` lives in `Mic.Modeling.Db`, where the transferrable db model can reach it too.
+// `KeyFlags` lives in `Mic.Orm.Db`, with the vocabulary of the database model.
 
 /// <summary>Specifies how a view is defined: by a query the engine translates, by SQL text written per server, or
 /// not at all, since the view exists in the database already.</summary>

@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Mic.Common;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
 using Npgsql;
@@ -63,10 +62,14 @@ public class PostgresProvider : DbProvider {
   /// <remarks>Full text is MIC's kind, not PostgreSQL's: the dialect creates it as a GIN index over the text-search
   /// vector of the columns, and the loader reads such an index back as a full-text index.</remarks>
   public override IReadOnlyList<DbIndexType> IndexTypes =>
-    [DbIndexType.Hash, DbIndexType.Gist, DbIndexType.Gin, DbIndexType.SpGist, DbIndexType.Brin, DbIndexType.FullText];
+    [DbIndexType.Hash, DbIndexType.Gist, DbIndexType.Gin, DbIndexType.SpGist, DbIndexType.Brin, DbIndexType.FullText,
+      DbIndexType.Hnsw];
 
   /// <summary>Gets GiST, which is what PostGIS indexes a geography with.</summary>
   public override DbIndexType SpatialIndexType => DbIndexType.Gist;
+
+  /// <summary>Gets HNSW, pgvector's graph index.</summary>
+  public override DbIndexType VectorIndexType => DbIndexType.Hnsw;
 
   /// <summary>Gets the case the server folds an unquoted identifier to, which for PostgreSQL is lower case.</summary>
   public override DbIdentifierCase IdentifierCase => DbIdentifierCase.Lower;
@@ -141,6 +144,27 @@ public class PostgresProvider : DbProvider {
 
     // PostGIS geography, SRID 4326 unless said otherwise; the catalog reports the bare type name.
     registry.Add("geography", typeof(GeoPoint));
+
+    // Array types, one per scalar an array member may hold. The alias is the name the catalog gives the type, the
+    // item type's internal name after an underscore. An empty array fills a required column added to a table.
+    AddArrayType(registry, "integer[]", typeof(int[]), "_int4");
+    AddArrayType(registry, "bigint[]", typeof(long[]), "_int8");
+    AddArrayType(registry, "smallint[]", typeof(short[]), "_int2");
+    AddArrayType(registry, "double precision[]", typeof(double[]), "_float8");
+    AddArrayType(registry, "real[]", typeof(float[]), "_float4");
+    AddArrayType(registry, "numeric[]", typeof(decimal[]), "_numeric");
+    AddArrayType(registry, "boolean[]", typeof(bool[]), "_bool");
+    AddArrayType(registry, "text[]", typeof(string[]), "_text");
+    AddArrayType(registry, "uuid[]", typeof(Guid[]), "_uuid");
+    AddArrayType(registry, "timestamp[]", typeof(DateTime[]), "_timestamp");
+    AddArrayType(registry, "date[]", typeof(DateOnly[]), "_date");
+
+    // pgvector's type, for a member marked [Vector]; its size is the number of dimensions. A float[] member with no
+    // mark stays real[].
+    registry.Add("vector", typeof(float[]), DbTypeFlags.TakesSize, specialType: DbSpecialType.Vector);
     return registry;
   }
+
+  private static void AddArrayType(DbTypeRegistry registry, string name, Type clrType, string catalogName) =>
+    registry.Add(name, clrType, aliases: catalogName, columnInit: "'{}'");
 }

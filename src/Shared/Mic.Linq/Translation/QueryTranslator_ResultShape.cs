@@ -127,13 +127,13 @@ public sealed partial class QueryTranslator {
   private bool IsStored(ILinqEntity entity) => _model.FindTable(entity) != null;
 
   /// <summary>Gets the members a row of an entity comes back as, in the model's order: the shape's fields for a
-  /// shape, the members the mapping stores in a column for a stored entity.</summary>
+  /// shape, the members the mapping stores in a column for a stored entity, but for the on-demand ones.</summary>
   private IReadOnlyList<ILinqEntityMember> GetResultMembers(ILinqEntity entity, RowSetNode resultSet) {
     if (!IsStored(entity))
       return entity.Members;
     var members = new List<ILinqEntityMember>();
     foreach (var member in entity.Members)
-      if (_model.FindColumn(entity, member) != null)
+      if (!member.IsOnDemand && _model.FindColumn(entity, member) != null)
         members.Add(member);
     if (members.Count == 0)
       throw new NotSupportedException($"Entity '{entity.Name}' has no stored members, so there is nothing to select.");

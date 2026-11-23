@@ -62,6 +62,9 @@ foreach (var customer in customers) {
 
 One statement counts the big orders of every customer, grouped by customer.
 
+An [on-demand member](on-demand-members.md) loads the same way: the first read of the member loads it for every
+tracked entity that does not have it.
+
 ## The bounds
 
 One statement takes up to 500 owners; past the cap the rest load as they are touched, 500 at a time. An entity

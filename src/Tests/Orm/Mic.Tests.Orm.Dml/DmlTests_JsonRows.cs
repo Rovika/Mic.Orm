@@ -6,15 +6,16 @@ using Mic.Orm.Db.Sql;
 
 namespace Mic.Tests.Orm.Db;
 
-// THE ROWS OF A JSON PARAMETER, on every vendor: one bound JSON array of objects read back as a table source with
-// typed columns, and joined to a real table on a Guid key. What the smart load over composite keys will rest on.
+// THE ROWS OF A PARAMETER, on every vendor: one bound value, a JSON array of objects or on Db2 an XML document, read
+// back as a table source with typed columns, and joined to a real table on a Guid key. What the smart load over
+// composite keys will rest on.
 public abstract partial class DmlTests {
   [TestMethod]
   public async Task JsonParameterRows_ComeThroughTypedAndJoin() {
     var provider = Db.Provider;
     var dialect = provider.SqlDialect;
     var registry = provider.TypeRegistry;
-    Assert.IsTrue(provider.Supports(DbFeatures.JsonRows), "every one of the five spells it");
+    Assert.IsTrue(provider.Supports(DbFeatures.JsonRows), "every one of the six spells it");
 
     JsonRowsColumn Column(string name, Type type, byte precision = 0, byte scale = 0) =>
       new(name, registry.MapType(type, precision: precision, scale: scale)
@@ -32,7 +33,7 @@ public abstract partial class DmlTests {
       [2, guids[1], -0.5m, new DateTime(2000, 1, 1)],
       [3, guids[2], 1234567890.1234m, new DateTime(2024, 12, 31, 23, 59, 59)],
     ];
-    var json = JsonRowsHelper.Serialize(provider, columns, rows);
+    var json = provider.SerializeRows(columns, rows);
     var source = dialect.JsonRowsSource(provider.ParameterPrefix + "p", columns, "k");
     Console.WriteLine($"-- rows of a JSON parameter, typed:\n{source}\n-- {json}");
 
@@ -55,7 +56,7 @@ public abstract partial class DmlTests {
     await session.SaveChangesAsync();
 
     var keyColumns = new[] { Column("id", typeof(Guid)) };
-    var keyJson = JsonRowsHelper.Serialize(provider, keyColumns, [[people[0].Id], [people[2].Id]]);
+    var keyJson = provider.SerializeRows(keyColumns, [[people[0].Id], [people[2].Id]]);
     var keySource = dialect.JsonRowsSource(provider.ParameterPrefix + "p", keyColumns, "k");
     var matched = await ReadAsync(
       $"SELECT {dialect.Quote("p")}.{Db.Quote("Rank")} FROM {Db.GetTableRef("Person")} {dialect.Quote("p")} "

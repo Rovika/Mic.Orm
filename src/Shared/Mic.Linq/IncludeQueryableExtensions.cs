@@ -3,11 +3,12 @@ using System.Reflection;
 
 namespace Mic.Linq;
 
-/// <summary>Provides extension methods that name the references and lists a query loads together with its rows,
-/// before a row is handed to the caller.</summary>
+/// <summary>Provides extension methods that name the references, the lists and the on-demand members a query loads
+/// together with its rows, before a row is handed to the caller.</summary>
 /// <remarks>An include may name a reference or a list member, a chain of them such as <c>o => o.Customer.Region</c>,
-/// or several at once in an anonymous object such as <c>o => new { o.Lines, o.Customer }</c>. A value member is
-/// refused by name when the query runs.</remarks>
+/// a member the host loads on demand, alone or at the end of a chain, or several at once in an anonymous object
+/// such as <c>o => new { o.Lines, o.Customer }</c>. Any other value member is refused by name when the query runs.
+/// </remarks>
 public static class IncludeQueryableExtensions {
   static readonly MethodInfo IncludeMethod = Find(genericArguments: 1);
   static readonly MethodInfo IncludeForMethod = Find(genericArguments: 2);

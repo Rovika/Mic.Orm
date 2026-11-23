@@ -2,8 +2,6 @@ using Mic.Linq;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Linq.Translation;
-using Mic.Modeling;
-using Mic.Modeling.Db;
 using Mic.Orm;
 using Mic.Orm.Db;
 using Mic.Orm.Db.Sql;
@@ -90,6 +88,15 @@ public abstract partial class LinqTests {
   public async Task RecursiveQuery_WalksAHierarchy() {
     var session = NewSession();
     var folders = session.EntitySet<Linq.IFolder>();
+
+    // DB2 TAKES NO JOIN WITH `ON` in the recursive part of a common table expression, which is how MIC writes one:
+    // the query is refused at translation, by the name of its definition.
+    if (Fixture.ServerKind == DbServerKind.Db2) {
+      var refused = await Assert.ThrowsExactlyAsync<NotSupportedException>(() => folders.Where(f => f.Name == "A")
+        .AsRecursiveCte("under", found => found.SelectMany(f => f.Children)).ToListAsync());
+      StringAssert.Contains(refused.Message, "'under'");
+      return;
+    }
 
     WriteTestTitle("DOWN, by spreading the list — everything under a folder, to any depth");
     var under = await folders.Where(f => f.Name == "A")

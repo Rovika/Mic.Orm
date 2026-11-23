@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Mic.Modeling.Db;
 using Mic.Orm.Db.Model;
 using Mic.Orm.Db.Model.Construction;
 using Mic.Orm.Db.Provider;
@@ -27,13 +26,20 @@ public partial class PostgresModelLoader(DbSettings settings) : DbModelLoader(se
   [GeneratedRegex(@"^('(?:[^']|'')*')::[A-Za-z_][A-Za-z0-9_ ]*(\(\d+(,\s*\d+)?\))?$")]
   private static partial Regex CastOfWholeLiteral();
 
-  /// <summary>Asynchronously reads the columns, naming an extension's type, such as PostGIS's <c>geography</c>, by
-  /// its own name where <c>information_schema</c> says only <c>USER-DEFINED</c>.</summary>
+  /// <summary>Asynchronously reads the columns, naming an extension's type, such as PostGIS's <c>geography</c>, and
+  /// an array type by its own name where <c>information_schema</c> says only <c>USER-DEFINED</c> or
+  /// <c>ARRAY</c>, and giving a pgvector column its dimensions as its length.</summary>
   protected override Task<InfoTable> GetColumnsAsync(CancellationToken cancellation) =>
     ExecuteSelectAsync($@"
 SELECT table_schema, table_name, column_name,
-       CASE WHEN data_type = 'USER-DEFINED' THEN udt_name ELSE data_type END AS data_type,
-       is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale, is_identity,
+       CASE WHEN data_type IN ('USER-DEFINED', 'ARRAY') THEN udt_name ELSE data_type END AS data_type,
+       is_nullable, column_default,
+       CASE WHEN data_type = 'USER-DEFINED' AND udt_name = 'vector'
+            THEN (SELECT NULLIF(a.atttypmod, -1) FROM pg_attribute a
+                  WHERE a.attrelid = (quote_ident(table_schema) || '.' || quote_ident(table_name))::regclass
+                    AND a.attname = column_name)
+            ELSE character_maximum_length END AS character_maximum_length,
+       numeric_precision, numeric_scale, is_identity,
        CASE WHEN is_generated = 'ALWAYS' THEN 'YES' ELSE 'NO' END AS is_generated,
        CASE WHEN is_generated = 'ALWAYS'
             THEN col_description((quote_ident(table_schema) || '.' || quote_ident(table_name))::regclass,
@@ -108,6 +114,9 @@ SELECT n.nspname AS table_schema, t.relname AS table_name, i.relname AS index_na
        ix.indisunique AS is_unique, ix.indisprimary AS is_primary, ix.indisclustered AS is_clustered,
        pg_get_expr(ix.indpred, ix.indrelid) AS filter,
        am.amname AS index_type,
+       (SELECT CASE opc.opcname WHEN 'vector_cosine_ops' THEN 'Cosine' WHEN 'vector_l2_ops' THEN 'Euclidean'
+                                WHEN 'vector_ip_ops' THEN 'DotProduct' END
+        FROM pg_opclass opc WHERE opc.oid = ix.indclass[0]) AS vector_metric,
        pg_get_indexdef(ix.indexrelid) AS index_def,
        obj_description(i.oid, 'pg_class') AS index_comment
 FROM pg_index ix

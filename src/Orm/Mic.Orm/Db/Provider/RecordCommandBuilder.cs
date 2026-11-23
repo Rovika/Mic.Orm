@@ -339,15 +339,18 @@ public class RecordCommandBuilder {
   }
 
   /// <summary>Binds a column's value for an insert or an update, as a parameter or, where the multi-row insert wants
-  /// one, as a literal; a geographic point's well-known binary is wrapped as the server's point.</summary>
+  /// one, as a literal; a geographic point's well-known binary is wrapped as the server's point, and a vector's
+  /// array as the server's vector.</summary>
   /// <remarks>A null point and a null binary are written as the literal: a bound null has no type and a driver
-  /// sends it as text, which a server refuses for its point type and SQL Server for a binary column.</remarks>
+  /// sends it as text, which a server refuses for its point type and SQL Server for a binary column. So is a null
+  /// Guid where the provider declares <see cref="DbFeatures.NullGuidAsLiteralDb2"/>.</remarks>
   private string BindColumnValue(DbCommand dbCommand, EntityRecord record, DbColumnInfo column, bool asLiteral) {
     var value = GetValue(record, column.Member!);
-    if (value == null && (column.IsGeoPoint || column.Member!.DataType == typeof(byte[])))
+    if (value == null && (column.IsGeoPoint || column.Member!.DataType == typeof(byte[])
+        || Provider.Supports(DbFeatures.NullGuidAsLiteralDb2) && column.TypeRef.ClrType == typeof(Guid)))
       return Dialect.GetLiteral((object?)null)!;
     var bound = asLiteral ? AddValue(dbCommand, value) : AddParameter(dbCommand, value);
-    return column.IsGeoPoint ? string.Format(Dialect.GeoPointWrite, bound) : bound;
+    return Dialect.GetColumnWriteFormat(column) is { } writeFormat ? string.Format(writeFormat, bound) : bound;
   }
 
   /// <summary>Binds a value as a parameter named by its position in the command, and returns the prefixed name to write

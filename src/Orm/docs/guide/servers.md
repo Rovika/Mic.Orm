@@ -1,16 +1,17 @@
 # Database server specifics
 
-MIC ORM runs on PostgreSQL, SQL Server, MySQL, Oracle and SQLite, through one provider each. The model, the
-queries and the schema upgrade are the same on all five. What differs is on this page.
+MIC ORM runs on PostgreSQL, SQL Server, MySQL, Oracle, SQLite and Db2, through one provider each. The model, the
+queries and the schema upgrade are the same on all of them. What differs is on this page; Db2 has a page of its
+own, [MIC ORM on an existing Db2 database](existing-db2-database.md), with its limits.
 
 ## Guid keys
 
 The ORM generates Guid keys in the application, ordered by time. SQL Server orders a Guid by its last six bytes
-first and the other four servers from the first byte, so the time sits in another place on SQL Server:
+first and the other servers from the first byte, so the time sits in another place on SQL Server:
 
 | Server | Default scheme |
 |---|---|
-| PostgreSQL, MySQL, Oracle, SQLite | `V7`, the millisecond in the first six bytes |
+| PostgreSQL, MySQL, Oracle, SQLite, Db2 | `V7`, the millisecond in the first six bytes |
 | SQL Server | `V8SqlServer`, the millisecond in the last six bytes |
 
 [Guid generation](guid-generation.md) has the layouts, the settings and how the time is read out of a key.

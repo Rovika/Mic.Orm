@@ -54,7 +54,7 @@ The template writes `Shop/mic-db/upgrade.json`:
 
 | Key | Meaning | Default |
 |---|---|---|
-| `provider` | `Postgres`, `MySql`, `MsSql`, `Oracle` or `SQLite`. | required |
+| `provider` | `Postgres`, `MySql`, `MsSql`, `Oracle`, `SQLite` or `Db2`. | required |
 | `connectionString` | The connection string the database is read with: the value, `env:NAME` or `file:path`. | required |
 | `schemaConnectionString` | The connection the script runs on with `--apply`. | the connection string |
 | `appAssembly` | The assembly holding the application class. | required |

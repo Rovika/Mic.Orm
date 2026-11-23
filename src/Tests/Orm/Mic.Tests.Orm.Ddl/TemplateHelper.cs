@@ -21,10 +21,10 @@ public static class TemplateHelper {
   const string Configuration = "Release";
 #endif
 
-  // The shared assemblies, Mic.Common, Mic.Modeling, Mic.Emit and Mic.Linq, are inside the Mic.Orm package.
+  // The shared assemblies, Mic.Common, Mic.Emit and Mic.Linq, are inside the Mic.Orm package.
   static readonly string[] PackedProjects = [
     "Orm/Mic.Orm", "Orm/Mic.Orm.Db.Postgres", "Orm/Mic.Orm.Db.MySql", "Orm/Mic.Orm.Db.SqlServer",
-    "Orm/Mic.Orm.Db.Oracle", "Orm/Mic.Orm.Db.Sqlite",
+    "Orm/Mic.Orm.Db.Oracle", "Orm/Mic.Orm.Db.Sqlite", "Orm/Mic.Orm.Db.Db2",
     "Templates/Mic.Templates",
   ];
 

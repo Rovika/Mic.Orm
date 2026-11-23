@@ -150,12 +150,14 @@ public class EntityRecord {
   /// <param name="member">The member to write.</param>
   /// <param name="value">The value to write.</param>
   /// <remarks>A write that changes nothing marks the member loaded only, so that the changed mask, which decides the
-  /// columns of an update and keys its cached statement, stays exact.</remarks>
+  /// columns of an update and keys its cached statement, stays exact. A write to a column member the record does not
+  /// hold is always a change.</remarks>
   /// <exception cref="InvalidOperationException">the member is part of the primary key and the record is not new.
   /// -or- The member is the row version. -or- The record's status is <see cref="EntityStatus.Fantom"/>.</exception>
   public void SetRawValue(EntityMemberInfo member, object? value) {
     var index = member.DataIndex;
-    if (Equals(_values[index], value)) {
+    // A column the record does not hold has no value to compare with: its slot is empty, not the row's.
+    if (Equals(_values[index], value) && (Loaded.IsSet(index) || member.Kind != MemberKind.Column)) {
       Loaded.Set(index);
       return;
     }
@@ -306,6 +308,48 @@ public class EntityRecord {
       _jsonTexts = (string?[])other._jsonTexts.Clone();
     Status = other.Status;
     Modified.Clear();
+  }
+
+  /// <summary>Takes from another record of the same entity the members this record does not hold; on a refresh,
+  /// also the members it holds and was not assigned.</summary>
+  /// <param name="other">The record to take the values from, a row read after this record was.</param>
+  /// <param name="refresh"><see langword="true"/> to replace the loaded members that were not assigned; otherwise,
+  /// <see langword="false"/>.</param>
+  /// <remarks>An assigned member is never replaced, and the status does not change. A foreign key member that takes
+  /// another value clears its reference, so the next read of the reference resolves the target again. A refresh
+  /// drops an on-demand member the record holds, was not assigned and the row does not carry, so the next read of
+  /// the member loads it.</remarks>
+  internal void MergeFrom(EntityRecord other, bool refresh) {
+    ArgumentNullException.ThrowIfNull(other);
+    if (!ReferenceEquals(other.Entity, Entity))
+      throw new ArgumentException($"Cannot merge a '{other.Entity.Name}' into a '{Entity.Name}'.", nameof(other));
+    // The common case: a row read again by a query, for a record that holds every member the row has.
+    if (!refresh && Loaded.Contains(other.Loaded))
+      return;
+
+    var members = Entity.MembersBySlot;
+    foreach (var index in other.Loaded.GetSetIndexes()) {
+      if (Modified.IsSet(index) || Loaded.IsSet(index) && !refresh)
+        continue;
+      var member = members[index];
+      if (member.OwnerReference is { } reference && !Equals(_values[index], other._values[index]))
+        _values[reference.DataIndex] = null;
+      if (member.IsJson)
+        SetLoadedJsonText(member, other.GetLoadedJsonText(member));
+      _values[index] = other._values[index];
+      Loaded.Set(index);
+    }
+    if (!refresh)
+      return;
+    foreach (var member in Entity.Members) {
+      var index = member.DataIndex;
+      if (!member.IsOnDemand || !Loaded.IsSet(index) || Modified.IsSet(index) || other.Loaded.IsSet(index))
+        continue;
+      if (member.IsJson)
+        SetLoadedJsonText(member, null);
+      _values[index] = null;
+      Loaded.Clear(index);
+    }
   }
 
   /// <summary>Makes the record nobody's: the values, the loaded mask and the status stay, the session goes.</summary>

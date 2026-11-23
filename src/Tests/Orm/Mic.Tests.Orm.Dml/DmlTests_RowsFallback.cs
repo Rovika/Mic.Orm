@@ -2,6 +2,7 @@ using Mic.Linq;
 using Mic.Linq.Model;
 using Mic.Linq.Nodes;
 using Mic.Orm;
+using Mic.Orm.Db;
 using Mic.Orm.Db.Provider;
 
 namespace Mic.Tests.Orm.Db;
@@ -44,7 +45,7 @@ public abstract partial class DmlTests {
       CollectionAssert.AreEqual(new[] { 0, 2 }, staged.Select(r => ((Dml.IPerson)r.EntityInstance).Rank).ToList());
       var commands = session.LastCommands;
       Assert.AreEqual(4, commands.Count, "create, fill, the statement, drop");
-      StringAssert.Contains(commands[0].Sql.ToUpperInvariant(), "CREATE");
+      StringAssert.Contains(commands[0].Sql.ToUpperInvariant(), Db.Provider.SqlDialect.CreateTempTable.Split(' ')[0]);
       StringAssert.Contains(commands[1].Sql.ToUpperInvariant(), "INSERT");
       // Where the server has a bulk channel the fill is one write over it, and its text says so.
       if (Db.Provider.Supports(DbFeatures.BulkInsert))
@@ -130,7 +131,8 @@ public abstract partial class DmlTests {
     sql = session.LastCommands[^1].Sql;
     Assert.IsTrue(sql.Length < 1_000, "the ids are not in the text: " + sql);
     if (!bindsArrays)
-      StringAssert.Contains(sql.ToUpperInvariant(), "JSON", "the list is read as the rows of a parameter");
+      StringAssert.Contains(sql.ToUpperInvariant(), Fixture.ServerKind == DbServerKind.Db2 ? "XMLTABLE" : "JSON",
+        "the list is read as the rows of a parameter");
 
     // ----- 1,500 ids, over 50,000 characters of JSON and past Oracle's cap of 1,000 items: still one value -------
     CollectionAssert.AreEqual(new[] { 0, 2 }, await RanksInAsync(MakeIds(people[0].Id, 1_498, people[2].Id)));
@@ -147,7 +149,7 @@ public abstract partial class DmlTests {
         Assert.AreEqual(1, commands.Count, "an array binds whole");
       } else {
         Assert.IsTrue(commands.Count >= 4, "create, fill, the statement, drop: " + commands.Count);
-        StringAssert.Contains(commands[0].Sql.ToUpperInvariant(), "CREATE");
+        StringAssert.Contains(commands[0].Sql.ToUpperInvariant(), Db.Provider.SqlDialect.CreateTempTable.Split(' ')[0]);
         StringAssert.Contains(commands[^2].Sql.ToUpperInvariant(), "SELECT");
         StringAssert.Contains(commands[^1].Sql.ToUpperInvariant(), "DROP");
         Assert.IsTrue(commands[^2].Sql.Length < 1_000, "the ids are not in the text: " + commands[^2].Sql);

@@ -3,14 +3,10 @@ using Mic.Linq.Model;
 
 namespace Mic.Tests.Orm;
 
-// The ORM's layering rule, as a test rather than as a convention nobody rereads: Mic.Orm may reference Mic.Common and
-// Mic.Modeling, and NOTHING else of MIC. That is what makes the ORM usable as just an ORM, with none of MIC's server,
-// client or web infrastructure present — a constraint that is cheap to hold now and expensive to recover later, since
-// a single convenient reference is how it would be lost.
-//
-// The check is deliberately weak today: an assembly with no code emits no references, so this passes trivially and
-// gains its teeth as the ORM fills in. It is here from the first step because the point is to fail the day someone
-// adds the reference, not to prove something now.
+// The ORM's layering rule, as a test rather than as a convention nobody rereads: Mic.Orm may reference Mic.Common,
+// Mic.Emit and Mic.Linq, and NOTHING else of MIC. That is what makes the ORM usable as just an ORM, with none of MIC's
+// server, client, modeling or web infrastructure present — a constraint that is cheap to hold and expensive to
+// recover, since a single convenient reference is how it would be lost.
 [TestClass]
 public class LayeringTests {
   // What the ORM must never pull in. Prefixes, so Mic.Server.Services and Mic.Server.Rest are both caught.
@@ -22,6 +18,14 @@ public class LayeringTests {
 
   [TestMethod]
   public void Provider_DoesNotReferenceServerOrClient() => AssertNoForbiddenReferences("Mic.Orm.Db.Postgres");
+
+  [TestMethod]
+  public void Orm_ReferencesOnlyItsThreeSharedAssemblies() {
+    // A whitelist, as the query engine's below: Mic.Modeling, Mic.Data or anything else of MIC's would slip through
+    // the forbidden list above and is just as wrong. The providers are held to the same, with the ORM itself added.
+    AssertReferencesOnly("Mic.Orm", "Mic.Common", "Mic.Emit", "Mic.Linq");
+    AssertReferencesOnly("Mic.Orm.Db.Postgres", "Mic.Orm", "Mic.Common", "Mic.Emit", "Mic.Linq");
+  }
 
   [TestMethod]
   public void Emitter_DoesNotReferenceTheOrm() {
@@ -59,6 +63,16 @@ public class LayeringTests {
     Assert.AreEqual(0, referenced.Count,
       $"Mic.Linq may reference only {string.Join(" and ", allowed)}, and now references "
       + $"{string.Join(", ", referenced)} — see LINQ_VISION.md, 'On the client'.");
+  }
+
+  private static void AssertReferencesOnly(string assemblyName, params string[] allowed) {
+    var referenced = Assembly.Load(assemblyName).GetReferencedAssemblies()
+      .Select(a => a.Name ?? string.Empty)
+      .Where(name => name.StartsWith("Mic.", StringComparison.Ordinal) && !allowed.Contains(name))
+      .ToList();
+    Assert.AreEqual(0, referenced.Count,
+      $"{assemblyName} may reference only {string.Join(", ", allowed)} of MIC's, and now references "
+      + $"{string.Join(", ", referenced)}.");
   }
 
   private static void AssertNoForbiddenReferences(string assemblyName) {

@@ -1,18 +1,14 @@
 using Mic.Linq.Model;
-using Mic.Modeling;
 using Mic.Orm.Model;
 
 namespace Mic.Orm.Runtime;
 
 /// <summary>Represents one row of a transient entity, such as a projection's row or a composite group key: named
-/// values over the structure the entity was made with.</summary>
-/// <remarks>As an <see cref="IEntityData"/> it binds wherever a query result's row does, on the client and through
-/// JSON; as an <see cref="ILinqRow"/> the query engine reads and writes it. It has no identity, no change tracking
-/// and no entity instance.</remarks>
-public sealed class ProjectionData : IEntityData, ILinqRow {
+/// values in the order of the entity's members.</summary>
+/// <remarks>The query engine reads and writes it as an <see cref="ILinqRow"/>. It has no identity, no change
+/// tracking and no entity instance.</remarks>
+public sealed class ProjectionData : ILinqRow {
   public TransientEntityInfo Entity { get; }
-
-  public EntityInfo EntityInfo => Entity.EntityInfo;
 
   readonly object?[] _values;
 
@@ -22,20 +18,28 @@ public sealed class ProjectionData : IEntityData, ILinqRow {
     _values = new object?[entity.Members.Count];
   }
 
-  public object? GetValue(Field field) => _values[field.DataIndex];
+  public object? GetValue(TransientMemberInfo member) => _values[member.DataIndex];
 
-  public void SetValue(Field field, object? value) => _values[field.DataIndex] = value;
+  public void SetValue(TransientMemberInfo member, object? value) => _values[member.DataIndex] = value;
 
-  public object? GetValue(string fieldName) => GetValue(EntityInfo.GetField(fieldName));
+  /// <summary>Gets the value of a member by its exact name.</summary>
+  /// <param name="memberName">The member name.</param>
+  /// <returns>The value.</returns>
+  /// <exception cref="KeyNotFoundException">The row's entity has no member of that name.</exception>
+  public object? GetValue(string memberName) => GetValue(Entity.GetMember(memberName));
 
-  public void SetValue(string fieldName, object? value) => SetValue(EntityInfo.GetField(fieldName), value);
+  /// <summary>Sets the value of a member by its exact name.</summary>
+  /// <param name="memberName">The member name.</param>
+  /// <param name="value">The value.</param>
+  /// <exception cref="KeyNotFoundException">The row's entity has no member of that name.</exception>
+  public void SetValue(string memberName, object? value) => SetValue(Entity.GetMember(memberName), value);
 
-  public object? GetValue(ILinqEntityMember member) => GetValue(((TransientMemberInfo)member).Field);
+  public object? GetValue(ILinqEntityMember member) => GetValue((TransientMemberInfo)member);
 
-  public void SetValue(ILinqEntityMember member, object? value) => SetValue(((TransientMemberInfo)member).Field, value);
+  public void SetValue(ILinqEntityMember member, object? value) => SetValue((TransientMemberInfo)member, value);
 
   public override string ToString() =>
-    string.Join(", ", EntityInfo.Fields.Select(f => $"{f.Name}={GetValue(f) ?? "null"}"));
+    string.Join(", ", Entity.Members.Select(m => $"{m.Name}={GetValue(m) ?? "null"}"));
 
   ILinqEntity ILinqRow.Entity => Entity;
 }
